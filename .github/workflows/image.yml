@@ -1,0 +1,258 @@
+name: Build and Publish CRUX Rolling Base Image
+
+on:
+  schedule:
+    # Weekly rolling rebuild on Sundays at 06:00 UTC (after upstream CRUX ISO rebuilds)
+    - cron: "0 6 * * 0"
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: "CRUX ISO download URL"
+        required: false
+        type: string
+        default: "https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso"
+      iso_sha256:
+        description: "Optional expected SHA-256 checksum for the CRUX ISO"
+        required: false
+        type: string
+        default: ""
+      crux_version:
+        description: "CRUX version tag prefix"
+        required: false
+        type: string
+        default: "3.8"
+      pe_ref:
+        description: "Git ref of crux-rolling/pe to build"
+        required: false
+        type: string
+        default: "main"
+      full_core:
+        description: "Install every CRUX core package (bypass config/core-exclude.txt)"
+        required: false
+        type: boolean
+        default: false
+      push_image:
+        description: "Push built image to configured container registries"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GHCR_IMAGE: ghcr.io/crux-rolling/image
+  DOCKERHUB_IMAGE: crux-rolling/image
+  DEFAULT_ISO_URL: https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso
+  CRUX_VERSION: ${{ inputs.crux_version || '3.8' }}
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout image repository
+        uses: actions/checkout@v4
+
+      - name: Checkout crux-rolling/pe
+        uses: actions/checkout@v4
+        with:
+          repository: crux-rolling/pe
+          ref: ${{ inputs.pe_ref || 'main' }}
+          path: _pe
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: _pe/go.mod
+
+      - name: Install host extraction and archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            libarchive-tools \
+            xz-utils \
+            zstd
+
+      - name: Lint shell scripts
+        run: make lint
+
+      - name: Build and test static pe and pe-index binaries
+        run: ./scripts/build-pe.sh --src _pe --out build/bin --test
+
+      - name: Extract and customize CRUX rootfs
+        env:
+          ISO_URL: ${{ inputs.iso_url || env.DEFAULT_ISO_URL }}
+          ISO_SHA256: ${{ inputs.iso_sha256 || '' }}
+          FULL_CORE: ${{ inputs.full_core == true && '1' || '0' }}
+        run: |
+          EXTRACT_ARGS=(
+            --iso-url "$ISO_URL"
+            --output build/rootfs
+            --work-dir build/work
+            --pe-bin build/bin/pe
+          )
+          if [ -n "$ISO_SHA256" ]; then
+            EXTRACT_ARGS+=(--iso-sha256 "$ISO_SHA256")
+          fi
+          if [ "$FULL_CORE" = "1" ]; then
+            EXTRACT_ARGS+=(--full-core)
+          else
+            EXTRACT_ARGS+=(--exclude-file config/core-exclude.txt)
+          fi
+
+          sudo ./scripts/extract-rootfs.sh "${EXTRACT_ARGS[@]}"
+          sudo ./scripts/customize-rootfs.sh \
+            --rootfs build/rootfs \
+            --pe-bin build/bin/pe \
+            --pe-index-bin build/bin/pe-index \
+            --pe-ini config/pe.ini \
+            --ports-core-repo https://git.crux.nu/ports/core.git \
+            --ports-core-ref "${CRUX_VERSION}" \
+            --tarball build/crux-rootfs.tar.xz
+
+          sudo chown "$(id -u):$(id -g)" build/crux-rootfs.tar.xz
+          echo "TARBALL_SIZE=$(du -h build/crux-rootfs.tar.xz | cut -f1)" >> "$GITHUB_ENV"
+
+      - name: Compute image metadata
+        id: meta
+        run: |
+          BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          DATE_TAG="$(date -u +'%Y%m%d')"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          SHOULD_PUSH="false"
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ inputs.push_image }}" != "false" ]; then
+            SHOULD_PUSH="true"
+          fi
+          {
+            echo "build_date=${BUILD_DATE}"
+            echo "date_tag=${DATE_TAG}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "should_push=${SHOULD_PUSH}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local image for verification
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: crux-rolling/image:ci-verify
+          build-args: |
+            ROOTFS_TARBALL=build/crux-rootfs.tar.xz
+            CRUX_VERSION=${{ env.CRUX_VERSION }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+            VCS_REF=${{ steps.meta.outputs.short_sha }}
+
+      - name: Verify built CRUX container image
+        run: ./scripts/verify-image.sh crux-rolling/image:ci-verify
+
+      - name: Check optional Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: steps.meta.outputs.should_push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub (optional)
+        if: steps.meta.outputs.should_push == 'true' && steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Assemble publish tags
+        id: tags
+        if: steps.meta.outputs.should_push == 'true'
+        run: |
+          TAGS=(
+            "${GHCR_IMAGE}:latest"
+            "${GHCR_IMAGE}:rolling"
+            "${GHCR_IMAGE}:${CRUX_VERSION}"
+            "${GHCR_IMAGE}:${CRUX_VERSION}-${{ steps.meta.outputs.date_tag }}"
+            "${GHCR_IMAGE}:sha-${{ steps.meta.outputs.short_sha }}"
+          )
+          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
+            TAGS+=(
+              "${DOCKERHUB_IMAGE}:latest"
+              "${DOCKERHUB_IMAGE}:rolling"
+              "${DOCKERHUB_IMAGE}:${CRUX_VERSION}"
+              "${DOCKERHUB_IMAGE}:${CRUX_VERSION}-${{ steps.meta.outputs.date_tag }}"
+              "${DOCKERHUB_IMAGE}:sha-${{ steps.meta.outputs.short_sha }}"
+            )
+          fi
+          {
+            echo "list<<EOF"
+            printf '%s\n' "${TAGS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Push verified image to registries
+        id: push
+        if: steps.meta.outputs.should_push == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          build-args: |
+            ROOTFS_TARBALL=build/crux-rootfs.tar.xz
+            CRUX_VERSION=${{ env.CRUX_VERSION }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+            VCS_REF=${{ steps.meta.outputs.short_sha }}
+
+      - name: Write workflow summary
+        env:
+          PUBLISHED_TAGS: ${{ steps.tags.outputs.list }}
+        run: |
+          {
+            echo "### CRUX Rolling Base Image Build"
+            echo ""
+            echo "- **CRUX Version:** \`${CRUX_VERSION}\`"
+            echo "- **ISO Source:** \`${{ inputs.iso_url || env.DEFAULT_ISO_URL }}\`"
+            echo "- **Rootfs Tarball Size:** \`${TARBALL_SIZE}\`"
+            echo "- **Verification:** Passed (\`scripts/verify-image.sh\`)"
+            if [ "${{ steps.meta.outputs.should_push }}" = "true" ]; then
+              echo "- **Digest:** \`${{ steps.push.outputs.digest }}\`"
+              echo "- **Docker Hub Mirror:** \`${{ steps.dockerhub.outputs.enabled }}\`"
+              echo ""
+              echo "#### Published Tags"
+              echo '```text'
+              printf '%s\n' "$PUBLISHED_TAGS"
+              echo '```'
+            else
+              echo "- **Push:** Skipped (pull request or push disabled)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

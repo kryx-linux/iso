@@ -1,0 +1,3 @@
+# Exclude everything from the Docker build context except the prepared rootfs tarball.
+*
+!build/crux-rootfs.tar.*

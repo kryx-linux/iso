@@ -1,0 +1,44 @@
+# Curated exclusion list for CRUX `core` packages not needed in headless CI containers.
+# One package name per line; comments (#) and blank lines are ignored.
+# Pass `--full-core` to scripts/extract-rootfs.sh to install every CRUX core package instead.
+#
+# Note: `eudev` and `kmod` are intentionally KEPT because `util-linux` depends on `eudev`.
+# Full build/CI toolchains (gcc, binutils, make, cmake, meson, ninja, python3, perl,
+# curl, openssl, ca-certificates, libarchive, xz, zstd, pkgutils, ports, httpup, rsync,
+# openssh, bash, dash, etc.) are intentionally KEPT.
+
+# Hardware, disk, and console utilities
+e2fsprogs
+hdparm
+kbd
+libdevmapper
+libusb
+pciutils
+sysfsutils
+usbutils
+
+# System init and bare-metal daemons
+dcron
+dhcpcd
+exim
+rc
+rdate
+start-stop-daemon
+sysklogd
+sysvinit
+
+# Kernel firewall and routing tools
+iproute2
+iptables
+libmnl
+libnftnl
+nftables
+
+# Host indexing, large manpages/typesetting, and 32-bit multilib extras
+glibc-32
+groff
+libpipeline
+libxcrypt-32
+man-db
+man-pages
+mlocate

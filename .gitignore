@@ -1,0 +1,23 @@
+# Build outputs and staging artifacts
+/build/
+/work/
+/dist/
+/bin/
+/rootfs/
+
+# Downloaded ISOs, checksums, and tarballs
+*.iso
+*.iso.sha256
+*.iso.md5
+*.tar
+*.tar.gz
+*.tar.xz
+*.tar.zst
+*.squashfs
+*.sfs
+
+# Temporary and editor files
+*.tmp
+*.log
+.DS_Store
+*~
