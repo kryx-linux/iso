@@ -27,17 +27,20 @@ grep -q "repository = ezke5/packages" /etc/pe.ini
 grep -q "tag = rolling-x86_64" /etc/pe.ini
 
 pe --version
-INSTALLED_COUNT="$(pe list | wc -l)"
+INSTALLED_LIST="$(pe list)"
+INSTALLED_COUNT="$(printf '%s\n' "${INSTALLED_LIST}" | wc -l)"
 echo "Installed packages in /var/lib/pkg/db: ${INSTALLED_COUNT}"
 test "${INSTALLED_COUNT}" -gt 20
 
-PORTS_COUNT="$(pe list --ports | wc -l)"
+PORTS_LIST="$(pe list --ports)"
+PORTS_COUNT="$(printf '%s\n' "${PORTS_LIST}" | wc -l)"
 echo "Available ports in /usr/ports: ${PORTS_COUNT}"
 test "${PORTS_COUNT}" -gt 50
-pe list --ports | grep -q "^core/bash$"
-pe list --ports | grep -q "^core/pkgutils$"
+grep -q "^core/bash$" <<< "${PORTS_LIST}"
+grep -q "^core/pkgutils$" <<< "${PORTS_LIST}"
 
-pe-index --help >/dev/null 2>&1 || pe-index --help 2>&1 | grep -q "Usage of pe-index"
+PE_INDEX_HELP="$(pe-index --help 2>&1 || true)"
+grep -q "Usage of pe-index" <<< "${PE_INDEX_HELP}"
 
 echo "=== 3. Network & TLS Defaults ==="
 test -s /etc/ssl/cert.pem
@@ -46,14 +49,20 @@ grep -q "^hosts:.*dns" /etc/nsswitch.conf
 grep -q "localhost" /etc/hosts
 
 echo "=== 4. Toolchain & Archive Smoke Test ==="
-gcc --version | head -n 1
-make --version | head -n 1
+show_head() {
+    local n="$1"
+    shift
+    "$@" | awk -v n="$n" "NR <= n { print }"
+}
+
+show_head 1 gcc --version
+show_head 1 make --version
 bsdtar --version
-tar --version | head -n 1
-xz --version | head -n 1
+show_head 1 tar --version
+show_head 1 xz --version
 zstd --version
-curl --version | head -n 1
-pkginfo -i | head -n 5
+show_head 1 curl --version
+show_head 5 pkginfo -i
 
 TMPDIR_TEST="$(mktemp -d /tmp/crux-verify.XXXXXX)"
 trap "rm -rf \"${TMPDIR_TEST}\"" EXIT
@@ -71,7 +80,8 @@ OUT="$("${TMPDIR_TEST}/hello")"
 test "${OUT}" = "crux-rolling-ok"
 
 bsdtar --format=gnutar --zstd -cf "${TMPDIR_TEST}/smoke#1.0-1.pkg.tar.zst" -C "${TMPDIR_TEST}" hello
-bsdtar -tf "${TMPDIR_TEST}/smoke#1.0-1.pkg.tar.zst" | grep -qx "hello"
+ARCHIVE_LIST="$(bsdtar -tf "${TMPDIR_TEST}/smoke#1.0-1.pkg.tar.zst")"
+grep -qx "hello" <<< "${ARCHIVE_LIST}"
 
 echo "=== All CRUX image verification checks passed! ==="
 '

@@ -282,7 +282,7 @@ TARBALL_ABS="$(cd "$(dirname "$TARBALL_OUT")" && pwd)/$(basename "$TARBALL_OUT")
 echo "[customize-rootfs] Packing rootfs tarball: ${TARBALL_ABS}..."
 
 TAR_FLAGS=(--numeric-owner -cf -)
-if tar --help 2>/dev/null | grep -q -- '--sort='; then
+if tar --help 2>/dev/null | grep -- '--sort=' >/dev/null; then
     TAR_FLAGS=(--sort=name --numeric-owner -cf -)
 fi
 
