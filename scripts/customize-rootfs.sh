@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOTFS_DIR="${REPO_ROOT}/build/rootfs"
 PE_BIN="${REPO_ROOT}/build/bin/pe"
 PE_INDEX_BIN="${REPO_ROOT}/build/bin/pe-index"
+KRYX_SRC_BIN="${REPO_ROOT}/build/bin/kryx-src"
 PE_INI="${REPO_ROOT}/config/pe.ini"
 PORTS_CORE_DIR=""
 PORTS_CORE_REPO="https://git.crux.nu/ports/core.git"
@@ -129,9 +130,12 @@ mkdir -p \
 chmod 1777 "${ROOTFS_ABS}/tmp" "${ROOTFS_ABS}/var/tmp"
 chmod 0750 "${ROOTFS_ABS}/root"
 
-# 2. Install pe, pe-index, and default /etc/pe.ini.
+# 2. Install pe, pe-index, kryx-src (if built), and default /etc/pe.ini.
 install -m 0755 "$PE_BIN" "${ROOTFS_ABS}/usr/bin/pe"
 install -m 0755 "$PE_INDEX_BIN" "${ROOTFS_ABS}/usr/bin/pe-index"
+if [[ -f "$KRYX_SRC_BIN" ]]; then
+    install -m 0755 "$KRYX_SRC_BIN" "${ROOTFS_ABS}/usr/bin/kryx-src"
+fi
 install -m 0644 "$PE_INI" "${ROOTFS_ABS}/etc/pe.ini"
 
 # 3. Verify CA certificates (/etc/ssl/cert.pem from CRUX ca-certificates) and add compatibility symlink.

@@ -42,6 +42,10 @@ grep -q "^core/pkgutils$" <<< "${PORTS_LIST}"
 PE_INDEX_HELP="$(pe-index --help 2>&1 || true)"
 grep -q "Usage of pe-index" <<< "${PE_INDEX_HELP}"
 
+if [ -x /usr/bin/kryx-src ]; then
+    kryx-src --version
+fi
+
 echo "=== 3. Network & TLS Defaults ==="
 test -s /etc/ssl/cert.pem
 grep -q "BEGIN CERTIFICATE" /etc/ssl/cert.pem

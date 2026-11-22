@@ -128,17 +128,20 @@ if [[ "$RUN_TESTS" -eq 1 ]]; then
     (cd "$PE_SRC" && go test ./...)
 fi
 
-echo "[build-pe] Building static pe and pe-index (version=${PE_VERSION}, GOARCH=${TARGET_ARCH})..."
+echo "[build-pe] Building static pe, pe-index, and kryx-src (version=${PE_VERSION}, GOARCH=${TARGET_ARCH})..."
 (
     cd "$PE_SRC"
     CGO_ENABLED=0 GOOS=linux GOARCH="$TARGET_ARCH" \
         go build -trimpath -ldflags "$LDFLAGS" -o "${OUT_DIR_ABS}/pe" ./cmd/pe
     CGO_ENABLED=0 GOOS=linux GOARCH="$TARGET_ARCH" \
         go build -trimpath -ldflags "$LDFLAGS" -o "${OUT_DIR_ABS}/pe-index" ./cmd/pe-index
+    CGO_ENABLED=0 GOOS=linux GOARCH="$TARGET_ARCH" \
+        go build -trimpath -ldflags "$LDFLAGS" -o "${OUT_DIR_ABS}/kryx-src" ./cmd/kryx-src
 )
 
-chmod 0755 "${OUT_DIR_ABS}/pe" "${OUT_DIR_ABS}/pe-index"
+chmod 0755 "${OUT_DIR_ABS}/pe" "${OUT_DIR_ABS}/pe-index" "${OUT_DIR_ABS}/kryx-src"
 
 echo "[build-pe] Built:"
 "${OUT_DIR_ABS}/pe" --version
-ls -lh "${OUT_DIR_ABS}/pe" "${OUT_DIR_ABS}/pe-index"
+"${OUT_DIR_ABS}/kryx-src" --version
+ls -lh "${OUT_DIR_ABS}/pe" "${OUT_DIR_ABS}/pe-index" "${OUT_DIR_ABS}/kryx-src"
