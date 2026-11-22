@@ -1,4 +1,4 @@
-# Makefile for building the crux-rolling CRUX Linux base Docker image
+# Makefile for building the kryx-linux CRUX Linux base Docker image
 
 CRUX_VERSION    ?= 3.8
 ISO_URL         ?= https://git.crux.nu/system/iso/releases/download/$(CRUX_VERSION)-updated/crux-$(CRUX_VERSION)-updated.iso
@@ -9,7 +9,7 @@ FULL_CORE       ?= 0
 INCLUDE_OPT     ?=
 
 PE_SRC          ?=
-PE_REPO         ?= https://github.com/crux-rolling/pe.git
+PE_REPO         ?= https://github.com/kryx-linux/pe.git
 PE_REF          ?= main
 PE_VERSION      ?=
 
@@ -23,7 +23,7 @@ BIN_DIR         ?= $(BUILD_DIR)/bin
 ROOTFS_DIR      ?= $(BUILD_DIR)/rootfs
 ROOTFS_TARBALL  ?= $(BUILD_DIR)/crux-rootfs.tar.xz
 
-IMAGE_NAME      ?= ghcr.io/crux-rolling/image
+IMAGE_NAME      ?= ghcr.io/kryx-linux/image
 IMAGE_TAG       ?= latest
 BUILD_DATE      ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 VCS_REF         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)

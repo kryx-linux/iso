@@ -28,7 +28,7 @@ on:
         type: string
         default: "3.8"
       pe_ref:
-        description: "Git ref of crux-rolling/pe to build"
+        description: "Git ref of kryx-linux/pe to build"
         required: false
         type: string
         default: "main"
@@ -52,8 +52,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GHCR_IMAGE: ghcr.io/crux-rolling/image
-  DOCKERHUB_IMAGE: crux-rolling/image
+  GHCR_IMAGE: ghcr.io/kryx-linux/image
+  DOCKERHUB_IMAGE: kryx-linux/image
   DEFAULT_ISO_URL: https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso
   CRUX_VERSION: ${{ inputs.crux_version || '3.8' }}
 
@@ -64,10 +64,10 @@ jobs:
       - name: Checkout image repository
         uses: actions/checkout@v4
 
-      - name: Checkout crux-rolling/pe
+      - name: Checkout kryx-linux/pe
         uses: actions/checkout@v4
         with:
-          repository: crux-rolling/pe
+          repository: kryx-linux/pe
           ref: ${{ inputs.pe_ref || 'main' }}
           path: _pe
 
@@ -154,7 +154,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           load: true
-          tags: crux-rolling/image:ci-verify
+          tags: kryx-linux/image:ci-verify
           build-args: |
             ROOTFS_TARBALL=build/crux-rootfs.tar.xz
             CRUX_VERSION=${{ env.CRUX_VERSION }}
@@ -162,7 +162,7 @@ jobs:
             VCS_REF=${{ steps.meta.outputs.short_sha }}
 
       - name: Verify built CRUX container image
-        run: ./scripts/verify-image.sh crux-rolling/image:ci-verify
+        run: ./scripts/verify-image.sh kryx-linux/image:ci-verify
 
       - name: Check optional Docker Hub credentials
         id: dockerhub

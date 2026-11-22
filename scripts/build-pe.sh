@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 PE_SRC=""
-PE_REPO="https://github.com/crux-rolling/pe.git"
+PE_REPO="https://github.com/kryx-linux/pe.git"
 PE_REF="main"
 OUT_DIR="${REPO_ROOT}/build/bin"
 PE_VERSION=""
@@ -19,7 +19,7 @@ Usage: scripts/build-pe.sh [options]
 
 Options:
   --src <dir>        Path to a local pe Git checkout (auto-detects ../pe if present)
-  --repo <url>       Git URL to clone when --src is omitted (default: https://github.com/crux-rolling/pe.git)
+  --repo <url>       Git URL to clone when --src is omitted (default: https://github.com/kryx-linux/pe.git)
   --ref <ref>        Git branch, tag, or commit when cloning (default: main)
   --out <dir>        Output directory for static binaries (default: build/bin)
   --version <ver>    Version string injected into pe binary
@@ -121,7 +121,7 @@ if [[ -z "$PE_VERSION" ]]; then
     fi
 fi
 
-LDFLAGS="-s -w -X github.com/ezke5/pe/internal/cli.Version=${PE_VERSION}"
+LDFLAGS="-s -w -X github.com/kryx-linux/pe/internal/cli.Version=${PE_VERSION}"
 
 if [[ "$RUN_TESTS" -eq 1 ]]; then
     echo "[build-pe] Running go test ./..."

@@ -1,6 +1,6 @@
-# crux-rolling/image
+# kryx-linux/image
 
-Automated, reproducible **CRUX Linux** base container image tailored for GitHub Actions and CI build environments, preconfigured with the standalone [`pe`](https://github.com/crux-rolling/pe) binary-first CRUX package manager.
+Automated, reproducible **CRUX Linux** base container image tailored for GitHub Actions and CI build environments, preconfigured with the standalone [`pe`](https://github.com/kryx-linux/pe) binary-first CRUX package manager.
 
 > **Unofficial Rolling Build Notice**
 >
@@ -10,7 +10,7 @@ Automated, reproducible **CRUX Linux** base container image tailored for GitHub 
 
 - **Authentic CRUX Base Rootfs**: Built directly from CRUX `core` binary packages (`/crux/core/*.pkg.tar.*`) extracted from the official CRUX ISO—not from the stripped live-installer `rootfs.tar.xz`—so `/var/lib/pkg/db`, headers, and build toolchains are intact.
 - **Curated CI Profile**: Excludes bare-metal/hardware/init-only packages (see `config/core-exclude.txt`) while keeping full C/C++/Python/CMake/Meson/Ninja/archive/networking toolchains (`gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`, `python3`, `perl`, `curl`, `openssl`, `ca-certificates`, `libarchive`/`bsdtar`, `xz`, `zstd`, `pkgutils`, `ports`, `httpup`, `rsync`, `openssh`). Pass `FULL_CORE=1` or `--full-core` to include every `core` package.
-- **`pe` Ready Out of the Box**: Includes static `pe` and `pe-index` binaries in `/usr/bin`, `/etc/pe.ini` pointing to `/usr/ports` and `ezke5/packages` (`rolling-x86_64`), and a snapshot of `/usr/ports/core`.
+- **`pe` Ready Out of the Box**: Includes static `pe` and `pe-index` binaries in `/usr/bin`, `/etc/pe.ini` pointing to `/usr/ports` and `kryx-linux/ports` (`rolling-x86_64`), and a snapshot of `/usr/ports/core`.
 - **Lean `FROM scratch` Image**: Single-layer rootfs import with clean OCI labels, `C.UTF-8` locale, `SSL_CERT_FILE=/etc/ssl/cert.pem`, and standard CRUX `PATH`.
 
 ## Container Images & Tags
@@ -18,15 +18,15 @@ Automated, reproducible **CRUX Linux** base container image tailored for GitHub 
 Primary registry (GHCR):
 
 ```sh
-docker pull ghcr.io/crux-rolling/image:latest
-docker pull ghcr.io/crux-rolling/image:rolling
-docker pull ghcr.io/crux-rolling/image:3.8
+docker pull ghcr.io/kryx-linux/image:latest
+docker pull ghcr.io/kryx-linux/image:rolling
+docker pull ghcr.io/kryx-linux/image:3.8
 ```
 
 Optional mirror (Docker Hub, published when registry secrets are configured):
 
 ```sh
-docker pull crux-rolling/image:latest
+docker pull kryx-linux/image:latest
 ```
 
 Published tags on `main` / scheduled builds:
@@ -39,7 +39,7 @@ Published tags on `main` / scheduled builds:
 
 ```sh
 # Start an interactive CRUX CI container
-docker run --rm -it ghcr.io/crux-rolling/image:latest
+docker run --rm -it ghcr.io/kryx-linux/image:latest
 
 # Inside the container:
 crux
@@ -56,7 +56,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/crux-rolling/image:latest
+      image: ghcr.io/kryx-linux/image:latest
     steps:
       - uses: actions/checkout@v4
       - run: |
@@ -130,10 +130,10 @@ The GitHub Actions workflow (`.github/workflows/image.yml`) runs:
 
 ### Registry Configuration
 
-- **GHCR (`ghcr.io/crux-rolling/image`)**: Authenticated automatically with `GITHUB_TOKEN` (`packages: write`). No extra secrets are required.
-- **Docker Hub (`crux-rolling/image`)**: Conditionally enabled only when both repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are configured.
+- **GHCR (`ghcr.io/kryx-linux/image`)**: Authenticated automatically with `GITHUB_TOKEN` (`packages: write`). No extra secrets are required.
+- **Docker Hub (`kryx-linux/image`)**: Conditionally enabled only when both repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are configured.
 
 ## Licensing
 
 - Build scripts, Dockerfile, configuration, and CI workflows in this repository are licensed under the **GNU General Public License v3.0 or later** (see [LICENSE](LICENSE)).
-- Upstream CRUX Linux (`https://crux.nu`), `pkgutils`, `ports`, `httpup`, and `crux-rolling/pe` are free and open-source software distributed under their respective upstream GPL / open-source licenses.
+- Upstream CRUX Linux (`https://crux.nu`), `pkgutils`, `ports`, `httpup`, and `kryx-linux/pe` are free and open-source software distributed under their respective upstream GPL / open-source licenses.

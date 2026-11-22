@@ -11,9 +11,9 @@ ADD ${ROOTFS_TARBALL} /
 
 LABEL org.opencontainers.image.title="CRUX Linux Rolling Base Image (Unofficial)" \
       org.opencontainers.image.description="Unofficial automated rolling CRUX Linux container base image for CI and GitHub Actions with pe package manager." \
-      org.opencontainers.image.url="https://github.com/crux-rolling/image" \
-      org.opencontainers.image.source="https://github.com/crux-rolling/image" \
-      org.opencontainers.image.vendor="crux-rolling" \
+      org.opencontainers.image.url="https://github.com/kryx-linux/image" \
+      org.opencontainers.image.source="https://github.com/kryx-linux/image" \
+      org.opencontainers.image.vendor="kryx-linux" \
       org.opencontainers.image.version="${CRUX_VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \

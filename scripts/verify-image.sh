@@ -2,7 +2,7 @@
 # Run post-build verification checks inside the built CRUX Linux container image.
 set -euo pipefail
 
-IMAGE="${1:-ghcr.io/crux-rolling/image:latest}"
+IMAGE="${1:-ghcr.io/kryx-linux/image:latest}"
 
 command -v docker >/dev/null 2>&1 || {
     echo "verify-image.sh: error: 'docker' is required to verify container image ${IMAGE}" >&2
@@ -23,7 +23,7 @@ echo "=== 2. Package Database & pe Checks ==="
 test -s /var/lib/pkg/db
 test -s /etc/pe.ini
 grep -q "ports_dir = /usr/ports" /etc/pe.ini
-grep -q "repository = ezke5/packages" /etc/pe.ini
+grep -q "repository = kryx-linux/ports" /etc/pe.ini
 grep -q "tag = rolling-x86_64" /etc/pe.ini
 
 pe --version
@@ -70,14 +70,14 @@ trap "rm -rf \"${TMPDIR_TEST}\"" EXIT
 cat > "${TMPDIR_TEST}/hello.c" <<EOF
 #include <stdio.h>
 int main(void) {
-    puts("crux-rolling-ok");
+    puts("kryx-linux-ok");
     return 0;
 }
 EOF
 
 gcc -O2 -Wall -Werror -o "${TMPDIR_TEST}/hello" "${TMPDIR_TEST}/hello.c"
 OUT="$("${TMPDIR_TEST}/hello")"
-test "${OUT}" = "crux-rolling-ok"
+test "${OUT}" = "kryx-linux-ok"
 
 bsdtar --format=gnutar --zstd -cf "${TMPDIR_TEST}/smoke#1.0-1.pkg.tar.zst" -C "${TMPDIR_TEST}" hello
 ARCHIVE_LIST="$(bsdtar -tf "${TMPDIR_TEST}/smoke#1.0-1.pkg.tar.zst")"
