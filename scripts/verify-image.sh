@@ -2,7 +2,7 @@
 # Run post-build verification checks inside the built CRUX Linux container image.
 set -euo pipefail
 
-IMAGE="${1:-ghcr.io/kryx-linux/image:latest}"
+IMAGE="${1:-ghcr.io/kryx-linux/iso:latest}"
 
 command -v docker >/dev/null 2>&1 || {
     echo "verify-image.sh: error: 'docker' is required to verify container image ${IMAGE}" >&2
@@ -49,6 +49,11 @@ done
 if [ -x /usr/bin/kryx-src ]; then
     kryx-src --version
 fi
+if [ -x /usr/bin/gports ]; then
+    gports --version
+fi
+test -s /etc/kpm/keys/kryx-release.pub
+grep -q "2528a8ef6bb01ca3" /etc/kpm/keys/kryx-release.pub
 
 echo "=== 3. Network & TLS Defaults ==="
 test -s /etc/ssl/cert.pem

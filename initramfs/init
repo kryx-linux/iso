@@ -1,0 +1,180 @@
+#!/bin/sh
+# KryX Linux Live Initramfs /init (busybox ash, strictly POSIX)
+# Detects block/optical/USB/NVMe/virtio media containing /kryx-media,
+# mounts live/rootfs.squashfs with an overlay/tmpfs writable layer,
+# and switches root cleanly into /sbin/init.
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+
+[ -x /bin/busybox ] && /bin/busybox --install -s /bin 2>/dev/null || true
+
+# Mount essential virtual filesystems
+mkdir -p /proc /sys /dev /run /newroot
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || mount -t tmpfs tmpfs /dev
+
+exec >/dev/console </dev/console 2>&1
+
+echo ""
+echo "KryX Linux Live — initializing initramfs..."
+
+DEBUG=0
+DSHELL=0
+DEVTIMEOUT=15
+LIVEMEDIA_PATH=""
+
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        debug)           DEBUG=1 ;;
+        dshell)          DSHELL=1 ;;
+        devicetimeout=*) DEVTIMEOUT="${arg#devicetimeout=}" ;;
+        media=*)         LIVEMEDIA_PATH="${arg#media=}" ;;
+    esac
+done
+
+PRINTK="$(cat /proc/sys/kernel/printk 2>/dev/null || echo 4)"
+[ "$DEBUG" -eq 0 ] && echo 0 >/proc/sys/kernel/printk 2>/dev/null || true
+
+# Populate /dev nodes via mdev
+if command -v mdev >/dev/null 2>&1; then
+    mdev -s
+    echo "/bin/mdev" >/proc/sys/kernel/hotplug 2>/dev/null || true
+fi
+
+load_mod() {
+    mod="$1"
+    if [ "$DEBUG" -eq 1 ]; then
+        modprobe "$mod" 2>&1 || true
+    else
+        modprobe "$mod" >/dev/null 2>&1 || true
+    fi
+}
+
+# Load storage, bus, HID, and filesystem kernel modules
+if [ -d /lib/modules ]; then
+    echo " * Loading storage, USB, and live filesystem modules..."
+    for mod in \
+        loop squashfs overlay isofs vfat fat ext4 nls_cp437 nls_iso8859-1 nls_ucs2_utils \
+        cdrom scsi_common scsi_mod sr_mod sd_mod \
+        libata libahci ahci ata_piix ata_generic \
+        nvme nvme_core vmd \
+        virtio virtio_pci virtio_ring virtio_blk virtio_scsi \
+        hv_vmbus hv_storvsc vmw_pvscsi \
+        xhci_hcd xhci_pci ehci_hcd ehci_pci ohci_hcd uhci_hcd \
+        usbcore usb_common usb-storage uas \
+        usbhid hid hid-generic hid-apple hid-logitech-dj; do
+        load_mod "$mod"
+    done
+    command -v mdev >/dev/null 2>&1 && mdev -s
+fi
+
+MEDIAMNT=/run/live/media
+ROMNT=/run/live/ro
+RWMNT=/run/live/rw
+mkdir -p "$MEDIAMNT" "$ROMNT" "$RWMNT"
+
+probe_media() {
+    candidates=""
+    if [ -n "$LIVEMEDIA_PATH" ]; then
+        candidates="$LIVEMEDIA_PATH"
+    else
+        if [ -r /proc/sys/dev/cdrom/info ]; then
+            cddevs="$(awk '/drive name:/ { for (i=3;i<=NF;i++) printf "/dev/%s ", $i }' /proc/sys/dev/cdrom/info)"
+            candidates="$candidates $cddevs"
+        fi
+        if [ -r /proc/partitions ]; then
+            blkdevs="$(awk 'NR>2 && $4 ~ /^(sr|sd|vd|hd|nvme|mmcblk)/ { printf "/dev/%s ", $4 }' /proc/partitions)"
+            candidates="$candidates $blkdevs"
+        fi
+    fi
+
+    for dev in $candidates; do
+        [ -b "$dev" ] || continue
+        if mount -o ro "$dev" "$MEDIAMNT" >/dev/null 2>&1; then
+            if [ -f "${MEDIAMNT}/kryx-media" ] && [ -f "${MEDIAMNT}/live/rootfs.squashfs" ]; then
+                echo " * Found KryX live media on ${dev}"
+                return 0
+            fi
+            umount "$MEDIAMNT" >/dev/null 2>&1 || true
+        fi
+    done
+    return 1
+}
+
+echo " * Searching for KryX live media (/kryx-media)..."
+FOUND=0
+elapsed=0
+while [ "$elapsed" -lt "$DEVTIMEOUT" ]; do
+    command -v mdev >/dev/null 2>&1 && mdev -s
+    if probe_media; then
+        FOUND=1
+        break
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+if [ "$FOUND" -ne 1 ]; then
+    echo " ! ERROR: Could not locate KryX live media (/kryx-media + /live/rootfs.squashfs)."
+    echo " ! Dropping to rescue shell. Mount media at ${MEDIAMNT} and exit to continue."
+    /bin/sh
+    if [ ! -f "${MEDIAMNT}/live/rootfs.squashfs" ]; then
+        echo " ! Live media still unavailable. Halting."
+        sleep 99999
+        exit 1
+    fi
+fi
+
+# Mount compressed squashfs rootfs read-only
+echo " * Mounting live/rootfs.squashfs..."
+if ! mount -t squashfs -o ro,loop "${MEDIAMNT}/live/rootfs.squashfs" "$ROMNT"; then
+    echo " ! ERROR: Failed to mount squashfs root image."
+    /bin/sh
+    exit 1
+fi
+
+# Mount writable tmpfs layer and combine via overlayfs
+echo " * Mounting writable overlay root..."
+mount -t tmpfs -o mode=0755,size=50% tmpfs "$RWMNT"
+mkdir -p "${RWMNT}/upper" "${RWMNT}/work"
+
+if mount -t overlay overlay -o "lowerdir=${ROMNT},upperdir=${RWMNT}/upper,workdir=${RWMNT}/work" /newroot 2>/dev/null; then
+    echo " * OverlayFS live root mounted."
+else
+    echo " * WARNING: overlayfs unavailable in kernel; falling back to tmpfs copy..."
+    mount -t tmpfs -o mode=0755,size=75% tmpfs /newroot
+    cp -a "${ROMNT}/." /newroot/
+    umount "$ROMNT" 2>/dev/null || true
+    umount "$MEDIAMNT" 2>/dev/null || true
+fi
+
+# Preserve /run/live mount visibility inside the live rootfs
+mkdir -p /newroot/run/live /newroot/dev /newroot/proc /newroot/sys
+if mountpoint -q "$MEDIAMNT" 2>/dev/null; then
+    mkdir -p /newroot/run/live/media /newroot/run/live/ro /newroot/run/live/rw
+    mount --move "$MEDIAMNT" /newroot/run/live/media 2>/dev/null || true
+    mount --move "$ROMNT" /newroot/run/live/ro 2>/dev/null || true
+    mount --move "$RWMNT" /newroot/run/live/rw 2>/dev/null || true
+fi
+
+if [ "$DSHELL" -eq 1 ]; then
+    echo " * Debug shell requested (dshell). Exit to switch_root."
+    /bin/sh
+fi
+
+echo " * Switching root to /sbin/init..."
+echo "$PRINTK" >/proc/sys/kernel/printk 2>/dev/null || true
+echo "" >/proc/sys/kernel/hotplug 2>/dev/null || true
+
+mount --move /dev /newroot/dev 2>/dev/null || true
+umount /sys 2>/dev/null || true
+umount /proc 2>/dev/null || true
+
+if [ -x /newroot/sbin/init ]; then
+    exec switch_root /newroot /sbin/init
+fi
+
+echo " ! ERROR: /sbin/init not found in /newroot!"
+exec /bin/sh

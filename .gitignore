@@ -2,8 +2,9 @@
 /build/
 /work/
 /dist/
-/bin/
 /rootfs/
+/_kpm/
+/_gports/
 
 # Downloaded ISOs, checksums, and tarballs
 *.iso

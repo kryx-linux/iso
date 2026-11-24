@@ -20,6 +20,7 @@ KPM_BIN="${REPO_ROOT}/build/bin/kpm"
 EXCLUDE_FILE="${REPO_ROOT}/config/core-exclude.txt"
 FULL_CORE=0
 INCLUDE_OPT=""
+SAVE_PKGS_DIR=""
 INSTALLER_MODE="auto"
 
 usage() {
@@ -41,6 +42,7 @@ Build options:
   --exclude-file <path>     CRUX core package exclusion list (default: config/core-exclude.txt)
   --full-core               Install every package in CRUX core (ignore --exclude-file)
   --include-opt <csv>       Comma-separated extra package names to include from ISO /crux/opt
+  --save-pkgs <dir>         Copy extracted ISO core + opt .pkg.tar.* archives into <dir> for ISO builds
   --installer-mode <mode>   Package installer: auto, kpm, pkgadd, bsdtar (default: auto)
   -h, --help                Show this help message
 EOF
@@ -94,6 +96,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --include-opt)
             INCLUDE_OPT="$2"
+            shift 2
+            ;;
+        --save-pkgs)
+            SAVE_PKGS_DIR="$2"
             shift 2
             ;;
         --installer-mode)
@@ -188,7 +194,7 @@ extract_iso_contents() {
     mkdir -p "$dest_dir"
 
     local extract_paths=("crux/core" "crux-media")
-    if [[ -n "$INCLUDE_OPT" ]]; then
+    if [[ -n "$INCLUDE_OPT" || -n "$SAVE_PKGS_DIR" ]]; then
         extract_paths+=("crux/opt")
     fi
 
@@ -201,8 +207,8 @@ extract_iso_contents() {
         mkdir -p "${dest_dir}/crux"
         xorriso -osirrox on -indev "$iso_file" -extract /crux/core "${dest_dir}/crux/core"
         xorriso -osirrox on -indev "$iso_file" -extract /crux-media "${dest_dir}/crux-media" 2>/dev/null || true
-        if [[ -n "$INCLUDE_OPT" ]]; then
-            xorriso -osirrox on -indev "$iso_file" -extract /crux/opt "${dest_dir}/crux/opt"
+        if [[ -n "$INCLUDE_OPT" || -n "$SAVE_PKGS_DIR" ]]; then
+            xorriso -osirrox on -indev "$iso_file" -extract /crux/opt "${dest_dir}/crux/opt" 2>/dev/null || true
         fi
     elif command -v 7z >/dev/null 2>&1; then
         echo "[extract-rootfs] Extracting ISO packages using 7z..."
@@ -216,7 +222,7 @@ extract_iso_contents() {
         if [[ -f "${MOUNT_DIR}/crux-media" ]]; then
             cp -a "${MOUNT_DIR}/crux-media" "${dest_dir}/crux-media"
         fi
-        if [[ -n "$INCLUDE_OPT" && -d "${MOUNT_DIR}/crux/opt" ]]; then
+        if [[ ( -n "$INCLUDE_OPT" || -n "$SAVE_PKGS_DIR" ) && -d "${MOUNT_DIR}/crux/opt" ]]; then
             cp -a "${MOUNT_DIR}/crux/opt" "${dest_dir}/crux/opt"
         fi
         umount "$MOUNT_DIR"
@@ -447,6 +453,15 @@ else
 
     ISO_EXTRACT_DIR="${WORK_DIR_ABS}/iso-contents"
     extract_iso_contents "$ISO_PATH" "$ISO_EXTRACT_DIR"
+
+    if [[ -n "$SAVE_PKGS_DIR" ]]; then
+        mkdir -p "$SAVE_PKGS_DIR"
+        echo "[extract-rootfs] Saving extracted CRUX core/opt packages into ${SAVE_PKGS_DIR}..."
+        cp -f "${ISO_EXTRACT_DIR}/crux/core"/*.pkg.tar.* "$SAVE_PKGS_DIR/" 2>/dev/null || true
+        if [[ -d "${ISO_EXTRACT_DIR}/crux/opt" ]]; then
+            cp -f "${ISO_EXTRACT_DIR}/crux/opt"/*.pkg.tar.* "$SAVE_PKGS_DIR/" 2>/dev/null || true
+        fi
+    fi
 
     install_packages "${ISO_EXTRACT_DIR}/crux/core" "${ISO_EXTRACT_DIR}/crux/opt"
 

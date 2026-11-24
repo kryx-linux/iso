@@ -1,0 +1,50 @@
+#!/bin/sh
+# /etc/rc - KryX Linux minimal live system initialization
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+
+echo "KryX Linux Live — starting minimal environment..."
+
+hostname kryx-live
+
+# Mount essential virtual filesystems
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys  || mount -t sysfs sysfs /sys
+mountpoint -q /dev  || mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm /run /tmp /var/log /var/run /var/lock /var/tmp
+chmod 1777 /tmp /var/tmp /dev/shm
+
+mountpoint -q /dev/pts || mount -t devpts -o gid=5,mode=620 devpts /dev/pts
+mountpoint -q /run     || mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+
+# Mount efivarfs on UEFI systems so grub-install can write NVRAM boot entries
+if [ -d /sys/firmware/efi/efivars ]; then
+    mountpoint -q /sys/firmware/efi/efivars || mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null || true
+fi
+
+# Start eudev for hotplug hardware, block devices, and network interfaces
+if [ -x /sbin/udevd ]; then
+    /sbin/udevd --daemon
+    /sbin/udevadm trigger --action=add --type=subsystems
+    /sbin/udevadm trigger --action=add --type=devices
+    /sbin/udevadm settle --timeout=10
+elif [ -x /sbin/start_udev ]; then
+    /sbin/start_udev
+fi
+
+# Bring up loopback and request DHCP on Ethernet interfaces in background
+if command -v ip >/dev/null 2>&1; then
+    ip link set lo up 2>/dev/null || true
+fi
+if command -v dhcpcd >/dev/null 2>&1; then
+    dhcpcd -b -q 2>/dev/null || true
+fi
+
+# Refresh dynamic linker cache if needed
+if [ -x /sbin/ldconfig ]; then
+    /sbin/ldconfig 2>/dev/null || true
+fi
+
+touch /var/run/utmp
+echo "KryX Linux Live ready."

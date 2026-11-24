@@ -1,0 +1,391 @@
+name: Build and Release KryX Linux Live ISO (GRUB BIOS+UEFI)
+
+on:
+  schedule:
+    # Weekly ISO + RootFS release build on Sundays at 08:00 UTC
+    - cron: "0 8 * * 0"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      crux_iso_url:
+        description: "Upstream CRUX 3.8 seed ISO URL (provides base core/opt packages)"
+        required: false
+        type: string
+        default: "https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso"
+      kernel_version:
+        description: "CRUX ISO kernel version to build"
+        required: false
+        type: string
+        default: "6.18.63"
+      kpm_ref:
+        description: "Git ref of kryx-linux/kpm"
+        required: false
+        type: string
+        default: "main"
+      gports_ref:
+        description: "Git ref of kryx-linux/gports"
+        required: false
+        type: string
+        default: "main"
+      rebuild_all_pkgs:
+        description: "Rebuild every packages.live package from source instead of reusing seed/remote binaries"
+        required: false
+        type: boolean
+        default: false
+      publish_release:
+        description: "Publish kryx-linux-x86_64.iso & kryx-rootfs-x86_64-rolling.tar.xz to GitHub Release"
+        required: false
+        type: boolean
+        default: true
+      release_tag:
+        description: "GitHub Release tag for ISO artifacts"
+        required: false
+        type: string
+        default: "rolling-x86_64"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: iso-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CRUX_VERSION: "3.8"
+  KERNEL_VERSION: ${{ inputs.kernel_version || '6.18.63' }}
+  CRUX_ISO_URL: ${{ inputs.crux_iso_url || 'https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso' }}
+  GHCR_IMAGE: ghcr.io/kryx-linux/iso
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout iso repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts & CRUX kernel defconfig
+        run: |
+          make lint
+          (cd kernel && ./checkdefconfig)
+
+  build-base-and-seed:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout iso repository
+        uses: actions/checkout@v4
+
+      - name: Checkout kryx-linux/kpm
+        uses: actions/checkout@v4
+        with:
+          repository: kryx-linux/kpm
+          ref: ${{ inputs.kpm_ref || 'main' }}
+          path: _kpm
+
+      - name: Checkout kryx-linux/gports
+        uses: actions/checkout@v4
+        with:
+          repository: kryx-linux/gports
+          ref: ${{ inputs.gports_ref || 'main' }}
+          path: _gports
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: _kpm/go.mod
+
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl git libarchive-tools xz-utils zstd
+
+      - name: Build static kpm, kpm-index, kryx-src, and gports
+        run: ./scripts/build-kpm.sh --src _kpm --gports-src _gports --out build/bin --test
+
+      - name: Extract CRUX 3.8 core/opt packages and build KryX base rootfs tarball
+        run: |
+          sudo ./scripts/extract-rootfs.sh \
+            --iso-url "${CRUX_ISO_URL}" \
+            --output build/container-rootfs \
+            --work-dir build/work \
+            --kpm-bin build/bin/kpm \
+            --exclude-file config/core-exclude.txt \
+            --save-pkgs build/seed-pkgs
+
+          sudo ./scripts/customize-rootfs.sh \
+            --rootfs build/container-rootfs \
+            --kpm-bin build/bin/kpm \
+            --kpm-index-bin build/bin/kpm-index \
+            --kpm-ini config/kpm.ini \
+            --ports-core-repo https://github.com/kryx-linux/core.git \
+            --ports-core-ref main \
+            --tarball build/kryx-rootfs.tar.xz
+
+          sudo chown -R "$(id -u):$(id -g)" build/bin build/seed-pkgs build/kryx-rootfs.tar.xz
+          tar -cf build/seed-pkgs.tar -C build/seed-pkgs .
+
+      - name: Build, verify, and publish KryX OCI container image
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local container image for verification
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: kryx-linux/iso:ci-verify
+          build-args: |
+            ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
+            CRUX_VERSION=${{ env.CRUX_VERSION }}
+
+      - name: Verify KryX container image
+        run: ./scripts/verify-image.sh kryx-linux/iso:ci-verify
+
+      - name: Log in to GHCR (non-PR builds)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push KryX base container image to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.GHCR_IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:rolling
+            ${{ env.GHCR_IMAGE }}:${{ env.CRUX_VERSION }}
+          build-args: |
+            ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
+            CRUX_VERSION=${{ env.CRUX_VERSION }}
+
+      - name: Upload static binaries, seed packages, and base rootfs tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-base-artifacts
+          path: |
+            build/bin/
+            build/seed-pkgs.tar
+            build/kryx-rootfs.tar.xz
+          retention-days: 1
+
+  build-essential-pkgs:
+    needs: build-base-and-seed
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout iso repository
+        uses: actions/checkout@v4
+
+      - name: Download base artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kryx-base-artifacts
+          path: build
+
+      - name: Prepare ports tree (core, opt, contrib, rolling) & seed packages
+        run: |
+          mkdir -p build/seed-pkgs build/local-pkgs build/ports-tree
+          tar -xf build/seed-pkgs.tar -C build/seed-pkgs
+          chmod +x build/bin/*
+
+          for col in core opt contrib; do
+            REPO_URL="https://github.com/kryx-linux/${col}.git"
+            BRANCH="main"
+            if ! git ls-remote --exit-code --heads "$REPO_URL" main >/dev/null 2>&1; then
+              BRANCH="3.8"
+            fi
+            git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "build/ports-tree/${col}"
+          done
+          git clone --depth 1 https://github.com/kryx-linux/ports.git build/ports-rolling-tmp
+          if [ -d build/ports-rolling-tmp/rolling ]; then
+            cp -a build/ports-rolling-tmp/rolling build/ports-tree/rolling
+          fi
+          rm -rf build/ports-rolling-tmp
+
+      - name: Ensure every core & necessary live package is built inside KryX container
+        env:
+          REBUILD_ALL: ${{ inputs.rebuild_all_pkgs == true && '1' || '0' }}
+        run: |
+          # Load freshly built rootfs into a local Docker image so essential builds run cleanly inside KryX.
+          docker build \
+            --build-arg ROOTFS_TARBALL=build/kryx-rootfs.tar.xz \
+            --build-arg CRUX_VERSION="${CRUX_VERSION}" \
+            -t kryx-linux/iso:pkg-builder .
+
+          EXTRA_FLAGS=()
+          [ "$REBUILD_ALL" = "1" ] && EXTRA_FLAGS+=(--rebuild-all)
+
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            kryx-linux/iso:pkg-builder \
+            /work/scripts/build-essential-pkgs.sh \
+              --pkg-list /work/config/packages.live \
+              --ports-dir /work/build/ports-tree \
+              --seed-pkgs /work/build/seed-pkgs \
+              --out-dir /work/build/local-pkgs \
+              --work-dir /work/build/pkg-work \
+              --kpm-bin /usr/bin/kpm \
+              "${EXTRA_FLAGS[@]}"
+
+          tar -cf build/local-pkgs.tar -C build/local-pkgs .
+          ls -lh build/local-pkgs.tar
+
+      - name: Upload verified core & essential packages bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-essential-pkgs
+          path: build/local-pkgs.tar
+          retention-days: 1
+
+  build-kernel:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout iso repository
+        uses: actions/checkout@v4
+
+      - name: Restore cached CRUX ISO kernel stage
+        id: kernel-cache
+        uses: actions/cache@v4
+        with:
+          path: build/kernel-stage
+          key: crux-iso-kernel-${{ env.KERNEL_VERSION }}-${{ hashFiles('kernel/linux-*.config', 'kernel/kryx-live.fragment', 'scripts/mkkernel.sh') }}
+
+      - name: Install kernel build dependencies
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential curl flex libelf-dev libssl-dev xz-utils
+
+      - name: Compile CRUX ISO kernel (linux-${{ env.KERNEL_VERSION }} + kryx-live.fragment)
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        run: |
+          ./scripts/mkkernel.sh \
+            --version "${KERNEL_VERSION}" \
+            --build-dir build \
+            --jobs "$(nproc)"
+
+      - name: Pack staged kernel artifact
+        run: |
+          tar -cf build/kernel-stage.tar -C build/kernel-stage .
+          ls -lh build/kernel-stage.tar
+
+      - name: Upload kernel stage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-kernel-stage
+          path: build/kernel-stage.tar
+          retention-days: 1
+
+  build-iso:
+    needs: [build-base-and-seed, build-essential-pkgs, build-kernel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout iso repository
+        uses: actions/checkout@v4
+
+      - name: Download base, essential packages, and kernel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install ISO & GRUB BIOS+UEFI build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            busybox-static \
+            cpio \
+            grub-common \
+            grub-efi-amd64-bin \
+            grub-pc-bin \
+            gzip \
+            mtools \
+            squashfs-tools \
+            xorriso \
+            zstd
+
+      - name: Assemble live rootfs, initramfs, and hybrid BIOS+UEFI GRUB ISO
+        run: |
+          mkdir -p build/bin build/local-pkgs build/kernel-stage
+          cp -a artifacts/kryx-base-artifacts/bin/. build/bin/
+          chmod +x build/bin/*
+          tar -xf artifacts/kryx-essential-pkgs/local-pkgs.tar -C build/local-pkgs
+          tar -xf artifacts/kryx-kernel-stage/kernel-stage.tar -C build/kernel-stage
+
+          sudo ./scripts/mkrootfs.sh \
+            --build-dir build \
+            --kpm-bin build/bin/kpm \
+            --gports-bin build/bin/gports \
+            --local-pkgs build/local-pkgs \
+            --kernel-dir build/kernel-stage \
+            --comp zstd
+
+          sudo ./scripts/mkinitramfs.sh \
+            --build-dir build \
+            --busybox /bin/busybox \
+            --comp gzip
+
+          sudo ./scripts/mkiso.sh \
+            --build-dir build \
+            --out kryx-linux-x86_64.iso
+
+          sudo chown "$(id -u):$(id -g)" kryx-linux-x86_64.iso kryx-linux-x86_64.iso.sha256
+
+      - name: Verify built ISO structure and SquashFS rootfs
+        run: ./scripts/verify-iso.sh kryx-linux-x86_64.iso
+
+      - name: Prepare release checksums
+        run: |
+          cp -f artifacts/kryx-base-artifacts/kryx-rootfs.tar.xz kryx-rootfs-x86_64-rolling.tar.xz
+          sha256sum kryx-linux-x86_64.iso kryx-rootfs-x86_64-rolling.tar.xz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload ISO workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-linux-x86_64-iso
+          path: |
+            kryx-linux-x86_64.iso
+            kryx-rootfs-x86_64-rolling.tar.xz
+            SHA256SUMS.txt
+          retention-days: 7
+
+      - name: Publish ISO and RootFS to GitHub Release
+        if: github.event_name != 'pull_request' && inputs.publish_release != false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (inputs.release_tag || 'rolling-x86_64') }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "KryX Linux ${RELEASE_TAG} (Live ISO & RootFS)" \
+              --notes "Automated KryX Linux hybrid BIOS+UEFI GRUB Live ISO (CRUX ISO linux-${KERNEL_VERSION} kernel, kpm) and base RootFS tarball."
+          fi
+          gh release upload "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            kryx-linux-x86_64.iso \
+            kryx-rootfs-x86_64-rolling.tar.xz \
+            SHA256SUMS.txt \
+            --clobber

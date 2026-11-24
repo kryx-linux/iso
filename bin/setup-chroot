@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# setup-chroot - Safely mount API filesystems, copy DNS resolver, chroot into a
+# KryX Linux target rootfs (default: /mnt), and cleanly unmount on exit.
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: setup-chroot [target_root] [command [args...]]
+
+Mounts /dev (rslave), /dev/pts, /proc, /sys, /run, and /sys/firmware/efi/efivars
+(when booted via UEFI), copies /etc/resolv.conf, enters chroot (default: /mnt,
+command: /bin/bash -l), and cleanly unmounts everything on exit.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "setup-chroot: error: must be run as root" >&2
+    exit 1
+fi
+
+TARGET_ROOT="/mnt"
+if [[ $# -ge 1 ]]; then
+    TARGET_ROOT="$1"
+    shift
+fi
+
+if [[ ! -d "$TARGET_ROOT" ]]; then
+    echo "setup-chroot: error: target root directory does not exist: ${TARGET_ROOT}" >&2
+    exit 1
+fi
+TARGET_ROOT="$(cd "$TARGET_ROOT" && pwd)"
+
+if [[ "$TARGET_ROOT" == "/" ]]; then
+    echo "setup-chroot: error: refusing to chroot into /" >&2
+    exit 1
+fi
+
+MOUNTED=()
+
+is_mounted() {
+    local target="$1"
+    if command -v mountpoint >/dev/null 2>&1; then
+        mountpoint -q "$target"
+    else
+        grep -qs " ${target} " /proc/mounts
+    fi
+}
+
+do_mount() {
+    local dst="$1"
+    shift
+    mkdir -p "$dst"
+    if ! is_mounted "$dst"; then
+        mount "$@" "$dst"
+        MOUNTED+=("$dst")
+    fi
+}
+
+cleanup() {
+    local i
+    for (( i=${#MOUNTED[@]}-1; i>=0; i-- )); do
+        local m="${MOUNTED[$i]}"
+        if is_mounted "$m"; then
+            umount -R "$m" 2>/dev/null || umount -R -l "$m" 2>/dev/null || true
+        fi
+    done
+}
+trap cleanup EXIT INT TERM
+
+do_mount "${TARGET_ROOT}/dev"     --rbind /dev
+mount --make-rslave "${TARGET_ROOT}/dev"
+do_mount "${TARGET_ROOT}/dev/pts" -t devpts -o gid=5,mode=620 devpts
+do_mount "${TARGET_ROOT}/proc"    -t proc proc
+do_mount "${TARGET_ROOT}/sys"     -t sysfs sysfs
+do_mount "${TARGET_ROOT}/run"     -t tmpfs -o mode=0755,nosuid,nodev tmpfs
+
+if [[ -d /sys/firmware/efi/efivars ]] && is_mounted /sys/firmware/efi/efivars; then
+    do_mount "${TARGET_ROOT}/sys/firmware/efi/efivars" -t efivarfs efivarfs || true
+fi
+
+if [[ -r /etc/resolv.conf ]]; then
+    mkdir -p "${TARGET_ROOT}/etc"
+    [[ -L "${TARGET_ROOT}/etc/resolv.conf" ]] && rm -f "${TARGET_ROOT}/etc/resolv.conf"
+    cp -L /etc/resolv.conf "${TARGET_ROOT}/etc/resolv.conf" 2>/dev/null || true
+fi
+
+SHELL_CMD=("$@")
+if [[ "${#SHELL_CMD[@]}" -eq 0 ]]; then
+    if [[ -x "${TARGET_ROOT}/bin/bash" ]]; then
+        SHELL_CMD=(/bin/bash -l)
+    else
+        SHELL_CMD=(/bin/sh -l)
+    fi
+fi
+
+env -i \
+    HOME=/root \
+    TERM="${TERM:-xterm-256color}" \
+    PATH="/sbin:/usr/sbin:/opt/sbin:/bin:/usr/bin:/opt/bin" \
+    LANG="${LANG:-C.UTF-8}" \
+    LC_ALL="${LC_ALL:-C.UTF-8}" \
+    PS1='(kryx-chroot) \u@\h:\w\$ ' \
+    chroot "$TARGET_ROOT" "${SHELL_CMD[@]}"

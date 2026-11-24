@@ -1,139 +1,96 @@
-# kryx-linux/image
+# `kryx-linux/iso` — KryX Linux Base Container & Minimal Live ISO Builder
 
-Automated, reproducible **CRUX/KryX Linux** base container image tailored for GitHub Actions and CI build environments, preconfigured with the standalone [`kpm`](https://github.com/kryx-linux/kpm) (KryX Package Manager) binary-first CRUX package manager and full upstream CRUX compatibility symlinks.
+Unified repository for building **both**:
+1. **KryX Linux Live / Installer ISO (`kryx-linux-x86_64.iso`)** — minimal, CRUX-inspired, strictly **`kpm`**-driven live image using **CRUX's ISO kernel (`linux-6.18.63`)** + SquashFS/OverlayFS `initramfs` and **GRUB** hybrid BIOS + UEFI boot.
+2. **KryX Linux Rolling OCI Base Container (`ghcr.io/kryx-linux/iso:latest`)** & RootFS tarball (`kryx-rootfs-x86_64-rolling.tar.xz`) — automated CI build environment shipping static `kpm`, `kpm-index`, `kryx-src`, `gports`, CRUX multi-call symlinks, and `/etc/kpm/keys/kryx-release.pub`.
 
-> **Unofficial Rolling Build Notice**
->
-> This repository and the published container images are **unofficial, community-maintained rolling builds** of CRUX Linux. They are not affiliated with, endorsed by, or maintained by the upstream CRUX Linux project (`https://crux.nu`). All upstream CRUX packages, build scripts, and tools retain their original upstream licenses (primarily GNU GPL).
+## Architecture
 
-## Features
+- **100% `kpm`-driven (zero `pkgadd`/`pkgmk` install calls):** Both `scripts/mkrootfs.sh` and the live installer (`bin/setup`) install packages via `kpm --root=...`.
+- **Pre-configured `/etc/kpm/`:** Ships `/etc/kpm.ini`, `/etc/kpm/kpm.ini`, `/etc/gports/sources.list`, and the official release public key `/etc/kpm/keys/kryx-release.pub` (Key ID `2528a8ef6bb01ca3`, Fingerprint `SHA256:JSio72uwHKPFO8HgwqaTitUg26aaKcZxLlwRHIjtSg8`).
+- **CRUX ISO Kernel (`linux-6.18.63`) + Initramfs:** Uses CRUX 3.8 ISO's official [`kernel/linux-6.18.63.config`](kernel/linux-6.18.63.config) + [`kernel/linux-6.18.63.defconfig`](kernel/linux-6.18.63.defconfig) compiled from `cdn.kernel.org` with [`kernel/kryx-live.fragment`](kernel/kryx-live.fragment) (`CONFIG_SQUASHFS` ZSTD/XZ/ZLIB + `CONFIG_OVERLAY_FS` + `CONFIG_EFI_STUB`)—never `prebuiltkernel.org`. Still supports `KERNEL_SOURCE=kpm`, `KERNEL_DIR`, or `KERNEL_TAR` overrides.
+- **Guaranteed Core & Essential Packages:** `scripts/build-essential-pkgs.sh` ensures every package listed in [`config/packages.live`](config/packages.live) exists (reusing CRUX 3.8 core/opt seed packages or the `kpm` binary index, and building any missing package from `kryx-linux/{core,opt,contrib,ports}` via `kpm build`), and `scripts/mkrootfs.sh` verifies every critical live binary before packing `live/rootfs.squashfs`.
+- **Hybrid BIOS + UEFI GRUB:** Generates `kryx-linux-x86_64.iso` via `grub-mkrescue` / `grub2-mkrescue` + `xorriso` and validates boot records + SquashFS via `scripts/verify-iso.sh`.
+- **GitHub Actions CI:**
+  - [`.github/workflows/iso.yml`](.github/workflows/iso.yml) — builds static `kpm`/`gports`, base container & RootFS, builds any missing core/essential packages inside the KryX container, compiles & caches CRUX ISO's `linux-6.18.63` kernel, creates & verifies `kryx-linux-x86_64.iso`, and publishes ISO + RootFS + `SHA256SUMS.txt` to GitHub Releases.
+  - [`.github/workflows/image.yml`](.github/workflows/image.yml) — fast container-only rebuild & publish to `ghcr.io/kryx-linux/iso`.
 
-- **Authentic CRUX Base Rootfs**: Built directly from CRUX `core` binary packages (`/crux/core/*.pkg.tar.*`) extracted from the official CRUX ISO—not from the stripped live-installer `rootfs.tar.xz`—so `/var/lib/pkg/db`, headers, and build toolchains are intact.
-- **Curated CI Profile**: Excludes bare-metal/hardware/init-only packages (see `config/core-exclude.txt`) while keeping full C/C++/Python/CMake/Meson/Ninja/archive/networking toolchains (`gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja`, `python3`, `perl`, `curl`, `openssl`, `ca-certificates`, `libarchive`/`bsdtar`, `xz`, `zstd`, `pkgutils`, `ports`, `httpup`, `rsync`, `openssh`). Pass `FULL_CORE=1` or `--full-core` to include every `core` package.
-- **`kpm` Ready Out of the Box**: Includes static `kpm`, `kpm-index`, and `kryx-src` binaries in `/usr/bin`, multi-call CRUX compatibility symlinks (`pkgadd`, `pkgrm`, `pkginfo`, `pkgmk`, `ports`, `rejmerge` -> `kpm`), `/etc/kpm.ini` pointing to `kryx-linux/ports` (`rolling-x86_64`), and a snapshot of `/usr/ports/core`.
-- **Lean `FROM scratch` Image**: Single-layer rootfs import with clean OCI labels, `C.UTF-8` locale, `SSL_CERT_FILE=/etc/ssl/cert.pem`, `KPM_CONFIG=/etc/kpm.ini`, and standard CRUX `PATH`.
+## Host Prerequisites
 
-## Container Images & Tags
-
-Primary registry (GHCR):
-
+### Fedora
 ```sh
-docker pull ghcr.io/kryx-linux/image:latest
-docker pull ghcr.io/kryx-linux/image:rolling
-docker pull ghcr.io/kryx-linux/image:3.8
+sudo dnf install -y gcc make bc bison flex perl openssl-devel elfutils-libelf-devel \
+  squashfs-tools grub2-tools-extra grub2-efi-x64-modules grub2-pc-modules \
+  xorriso mtools busybox cpio gzip zstd libarchive docker qemu-system-x86 edk2-ovmf
 ```
 
-Optional mirror (Docker Hub, published when registry secrets are configured):
-
+### CRUX / KryX
 ```sh
-docker pull kryx-linux/image:latest
+sudo kpm install --deps gcc make bc bison flex perl openssl elfutils \
+  squashfs-tools grub2 grub2-efi xorriso mtools busybox cpio gzip zstd libarchive
 ```
 
-Published tags on `main` / scheduled builds:
-- `latest`, `rolling` — latest automated rolling build
-- `3.8` — latest build for CRUX 3.8
-- `3.8-YYYYMMDD` — dated rolling snapshot
-- `sha-<commit>` — exact repository commit
+## Building
 
-## Quick Usage
-
+### 1. Build Static Tools + Base Container Image & Seed Packages
 ```sh
-# Start an interactive CRUX/KryX CI container
-docker run --rm -it ghcr.io/kryx-linux/image:latest
-
-# Inside the container:
-crux
-kpm list
-kpm list --ports
-kpm sync
-kpm search zlib
-```
-
-Using in GitHub Actions:
-
-```yaml
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/kryx-linux/image:latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          kpm --version
-          kpm list --ports | head
-          gcc --version
-```
-
-## Architecture & Repository Layout
-
-```text
-.
-├── .github/workflows/image.yml  # Weekly rolling build, verification, and registry push
-├── config/
-│   ├── core-exclude.txt         # Curated bare-metal/init exclusions for CI containers
-│   └── kpm.ini                  # Default /etc/kpm.ini installed into the image
-├── scripts/
-│   ├── build-kpm.sh             # Builds static (CGO_ENABLED=0) kpm, kpm-index & kryx-src binaries
-│   ├── extract-rootfs.sh        # Extracts CRUX ISO and installs core packages into rootfs
-│   ├── customize-rootfs.sh      # Applies CI defaults, kpm, symlinks, /usr/ports/core, and packs tarball
-│   └── verify-image.sh          # Post-build container smoke tests
-├── Dockerfile                   # Lean FROM scratch image importing build/crux-rootfs.tar.xz
-├── Makefile                     # Local and CI build entrypoint
-└── LICENSE                      # GNU General Public License v3
-```
-
-## Building Locally
-
-### Prerequisites
-
-- Linux x86_64 host with `bash`, `go` (1.24+), `bsdtar` (or `xorriso`/`7z`), `tar`, `xz`, `zstd`, `curl`, `git`, and `docker`.
-- Root privileges (e.g., `sudo`) are recommended for `extract-rootfs.sh` and `customize-rootfs.sh` so package ownership, permissions, and setuid bits are preserved identically to CRUX `pkgadd`.
-
-### Build from Upstream Rolling CRUX ISO
-
-```sh
-# 1. Build static kpm, kpm-index & kryx-src binaries
 make kpm
-
-# 2. Extract and customize the CRUX rootfs tarball (run as root for faithful ownership/modes)
-sudo make rootfs
-
-# 3. Build and verify the Docker image
+sudo make container-rootfs
 make docker
-make verify
+make verify-image
 ```
 
-### Common Overrides
+### 2. Build `kryx-linux-x86_64.iso` (CRUX ISO Kernel + GRUB BIOS/UEFI)
+```sh
+# Ensure every core & essential live package is present/built:
+./scripts/build-essential-pkgs.sh \
+  --ports-dir /usr/ports \
+  --seed-pkgs build/local-pkgs \
+  --out-dir build/local-pkgs
+
+# Compile CRUX's ISO kernel (can run unprivileged; auto-reuses ../crux-iso/kernel/linux-6.18.63.tar.xz if present):
+make kernel
+
+# Build live rootfs (kpm), initramfs, and hybrid BIOS+UEFI GRUB ISO:
+sudo make all
+
+# Verify ISO El Torito boot records & SquashFS contents:
+make verify-iso
+```
+
+### Overriding the Kernel Source (Optional)
+```sh
+# Use custom kernel package from kpm binary repo or local .pkg.tar.zst:
+sudo make all KERNEL_SOURCE=kpm KERNEL_PKG=/path/to/kernel#6.18.64-2.pkg.tar.zst
+
+# Use a local prebuilt kernel directory or tarball:
+sudo make all KERNEL_DIR=/path/to/kernel-stage
+sudo make all KERNEL_TAR=/path/to/kernel-6.18.63.tar.xz
+```
+
+## Testing in QEMU
 
 ```sh
-# Use a local CRUX ISO and local sibling checkouts of kpm and core ports
-make kpm KPM_SRC=../kpm
-sudo make rootfs \
-  ISO_PATH=/path/to/crux-3.8-updated.iso \
-  ISO_SHA256=<expected-sha256> \
-  CORE_PORTS_SRC=../core
+# BIOS mode:
+make qemu
 
-# Include every package in CRUX core (disable config/core-exclude.txt)
-sudo make rootfs FULL_CORE=1
+# UEFI mode (OVMF):
+make qemu-uefi
 
-# Include additional packages from /crux/opt on the ISO
-sudo make rootfs INCLUDE_OPT="fakeroot,unzip,zip"
+# Full install onto a virtual disk:
+qemu-img create -f qcow2 test-disk.qcow2 20G
+qemu-system-x86_64 -enable-kvm -m 2048 -smp 2 \
+  -bios /usr/share/edk2/ovmf/OVMF_CODE.fd \
+  -cdrom kryx-linux-x86_64.iso \
+  -drive file=test-disk.qcow2,format=qcow2,if=virtio \
+  -boot d
 ```
 
-## CI Automation & Registry Secrets
-
-The GitHub Actions workflow (`.github/workflows/image.yml`) runs:
-- **Weekly** on Sunday (`06:00 UTC`, after upstream CRUX weekly ISO builds)
-- **On push** to `main` and on **pull requests** (PRs build and verify without pushing)
-- **Manually** via `workflow_dispatch` with overridable `iso_url`, `iso_sha256`, `crux_version`, `kpm_ref`, `full_core`, and `push_image` inputs.
-
-### Registry Configuration
-
-- **GHCR (`ghcr.io/kryx-linux/image`)**: Authenticated automatically with `GITHUB_TOKEN` (`packages: write`). No extra secrets are required.
-- **Docker Hub (`kryx-linux/image`)**: Conditionally enabled only when both repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are configured.
-
-## Licensing
-
-- Build scripts, Dockerfile, configuration, and CI workflows in this repository are licensed under the **GNU General Public License v3.0 or later** (see [LICENSE](LICENSE)).
-- Upstream CRUX Linux (`https://crux.nu`), `pkgutils`, `ports`, `httpup`, and `kryx-linux/kpm` are free and open-source software distributed under their respective upstream GPL / open-source licenses.
+Inside the live root TTY:
+```sh
+cfdisk /dev/vda
+mkfs.fat -F32 /dev/vda1 && mkfs.ext4 /dev/vda2
+mount /dev/vda2 /mnt && mkdir -p /mnt/boot/efi && mount /dev/vda1 /mnt/boot/efi
+setup /mnt
+setup-chroot /mnt
+```

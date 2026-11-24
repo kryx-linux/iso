@@ -1,0 +1,60 @@
+# Strictly minimal KryX Linux Live ISO package list (no bloat)
+# Every name below matches an exact port in kryx-linux/{core,opt,ports}.
+# Installed via `kpm --root=<rootfs> install --deps`
+
+# Essential userland, shared runtime libs & init (core)
+filesystem
+glibc
+zlib
+bzip2
+xz
+zstd
+attr
+acl
+libcap
+libxcrypt
+libpcre2
+ncurses
+readline
+bash
+coreutils
+eudev
+util-linux
+sysvinit
+grep
+sed
+gawk
+tar
+gzip
+kmod
+procps
+shadow
+less
+
+# Disk & filesystem tools (core + opt)
+e2fsprogs
+dosfstools
+
+# Networking & TLS (core + opt)
+libmnl
+libnghttp2
+openssl
+ca-certificates
+curl
+iproute2
+dhcpcd
+libnl
+dbus
+wireless-tools
+wpa_supplicant
+
+# Bootloader tools for target install (opt)
+efivar
+efibootmgr
+grub2
+grub2-efi
+
+# KryX tools & crypto verification (core + rolling)
+signify
+kpm
+gports

@@ -1,0 +1,7 @@
+# /etc/gports/sources.list - KryX Linux ports collections
+# Format: <protocol> <collection> <url> [destination]
+git rolling https://github.com/kryx-linux/ports.git /usr/ports/rolling-repo
+git core    https://github.com/kryx-linux/core.git
+git opt     https://github.com/kryx-linux/opt.git
+git xorg    https://github.com/kryx-linux/xorg.git
+git contrib https://github.com/kryx-linux/contrib.git

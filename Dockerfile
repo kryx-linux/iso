@@ -2,17 +2,17 @@
 
 FROM scratch
 
-ARG ROOTFS_TARBALL=build/crux-rootfs.tar.xz
+ARG ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
 ARG CRUX_VERSION=3.8
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
 
 ADD ${ROOTFS_TARBALL} /
 
-LABEL org.opencontainers.image.title="CRUX/KryX Linux Rolling Base Image (Unofficial)" \
-      org.opencontainers.image.description="Unofficial automated rolling CRUX/KryX Linux container base image for CI and GitHub Actions with kpm package manager." \
-      org.opencontainers.image.url="https://github.com/kryx-linux/image" \
-      org.opencontainers.image.source="https://github.com/kryx-linux/image" \
+LABEL org.opencontainers.image.title="KryX Linux Rolling Base Image" \
+      org.opencontainers.image.description="Automated rolling KryX Linux container base image for CI, GitHub Actions, and ISO builds with kpm, kryx-src, and gports." \
+      org.opencontainers.image.url="https://github.com/kryx-linux/iso" \
+      org.opencontainers.image.source="https://github.com/kryx-linux/iso" \
       org.opencontainers.image.vendor="kryx-linux" \
       org.opencontainers.image.version="${CRUX_VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

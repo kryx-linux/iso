@@ -1,0 +1,15 @@
+#!/bin/sh
+# /etc/rc.shutdown - KryX Linux minimal live shutdown script
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+
+echo "KryX Linux Live — shutting down..."
+
+killall5 -15 2>/dev/null || true
+sleep 1
+killall5 -9 2>/dev/null || true
+
+sync
+umount -a -r -t nosysfs,noproc,nodevtmpfs,notmpfs 2>/dev/null || true
+sync

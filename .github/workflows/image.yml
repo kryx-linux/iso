@@ -1,4 +1,4 @@
-name: Build and Publish CRUX Rolling Base Image
+name: Build and Publish KryX Rolling Base Image
 
 on:
   schedule:
@@ -7,28 +7,44 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "config/core-exclude.txt"
+      - "config/kpm.ini"
+      - "config/keys/**"
+      - "scripts/build-kpm.sh"
+      - "scripts/extract-rootfs.sh"
+      - "scripts/customize-rootfs.sh"
+      - "scripts/verify-image.sh"
+      - ".github/workflows/image.yml"
   pull_request:
     branches:
       - main
   workflow_dispatch:
     inputs:
       iso_url:
-        description: "CRUX ISO download URL"
+        description: "CRUX seed ISO download URL"
         required: false
         type: string
         default: "https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso"
       iso_sha256:
-        description: "Optional expected SHA-256 checksum for the CRUX ISO"
+        description: "Optional expected SHA-256 checksum for the CRUX seed ISO"
         required: false
         type: string
         default: ""
       crux_version:
-        description: "CRUX version tag prefix"
+        description: "CRUX base version tag prefix"
         required: false
         type: string
         default: "3.8"
       kpm_ref:
         description: "Git ref of kryx-linux/kpm to build"
+        required: false
+        type: string
+        default: "main"
+      gports_ref:
+        description: "Git ref of kryx-linux/gports to build"
         required: false
         type: string
         default: "main"
@@ -52,8 +68,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GHCR_IMAGE: ghcr.io/kryx-linux/image
-  DOCKERHUB_IMAGE: kryx-linux/image
+  GHCR_IMAGE: ghcr.io/kryx-linux/iso
+  DOCKERHUB_IMAGE: kryx-linux/iso
   DEFAULT_ISO_URL: https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso
   CRUX_VERSION: ${{ inputs.crux_version || '3.8' }}
 
@@ -61,7 +77,7 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout image repository
+      - name: Checkout iso repository
         uses: actions/checkout@v4
 
       - name: Checkout kryx-linux/kpm
@@ -70,6 +86,13 @@ jobs:
           repository: kryx-linux/kpm
           ref: ${{ inputs.kpm_ref || 'main' }}
           path: _kpm
+
+      - name: Checkout kryx-linux/gports
+        uses: actions/checkout@v4
+        with:
+          repository: kryx-linux/gports
+          ref: ${{ inputs.gports_ref || 'main' }}
+          path: _gports
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -90,10 +113,10 @@ jobs:
       - name: Lint shell scripts
         run: make lint
 
-      - name: Build and test static kpm, kpm-index, and kryx-src binaries
-        run: ./scripts/build-kpm.sh --src _kpm --out build/bin --test
+      - name: Build and test static kpm, kpm-index, kryx-src, and gports
+        run: ./scripts/build-kpm.sh --src _kpm --gports-src _gports --out build/bin --test
 
-      - name: Extract and customize CRUX rootfs
+      - name: Extract and customize KryX rootfs
         env:
           ISO_URL: ${{ inputs.iso_url || env.DEFAULT_ISO_URL }}
           ISO_SHA256: ${{ inputs.iso_sha256 || '' }}
@@ -101,7 +124,7 @@ jobs:
         run: |
           EXTRACT_ARGS=(
             --iso-url "$ISO_URL"
-            --output build/rootfs
+            --output build/container-rootfs
             --work-dir build/work
             --kpm-bin build/bin/kpm
           )
@@ -116,16 +139,16 @@ jobs:
 
           sudo ./scripts/extract-rootfs.sh "${EXTRACT_ARGS[@]}"
           sudo ./scripts/customize-rootfs.sh \
-            --rootfs build/rootfs \
+            --rootfs build/container-rootfs \
             --kpm-bin build/bin/kpm \
             --kpm-index-bin build/bin/kpm-index \
             --kpm-ini config/kpm.ini \
-            --ports-core-repo https://git.crux.nu/ports/core.git \
-            --ports-core-ref "${CRUX_VERSION}" \
-            --tarball build/crux-rootfs.tar.xz
+            --ports-core-repo https://github.com/kryx-linux/core.git \
+            --ports-core-ref main \
+            --tarball build/kryx-rootfs.tar.xz
 
-          sudo chown "$(id -u):$(id -g)" build/crux-rootfs.tar.xz
-          echo "TARBALL_SIZE=$(du -h build/crux-rootfs.tar.xz | cut -f1)" >> "$GITHUB_ENV"
+          sudo chown "$(id -u):$(id -g)" build/kryx-rootfs.tar.xz
+          echo "TARBALL_SIZE=$(du -h build/kryx-rootfs.tar.xz | cut -f1)" >> "$GITHUB_ENV"
 
       - name: Compute image metadata
         id: meta
@@ -154,27 +177,15 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           load: true
-          tags: kryx-linux/image:ci-verify
+          tags: kryx-linux/iso:ci-verify
           build-args: |
-            ROOTFS_TARBALL=build/crux-rootfs.tar.xz
+            ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
             CRUX_VERSION=${{ env.CRUX_VERSION }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
             VCS_REF=${{ steps.meta.outputs.short_sha }}
 
-      - name: Verify built CRUX container image
-        run: ./scripts/verify-image.sh kryx-linux/image:ci-verify
-
-      - name: Check optional Docker Hub credentials
-        id: dockerhub
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Verify built KryX container image
+        run: ./scripts/verify-image.sh kryx-linux/iso:ci-verify
 
       - name: Log in to GitHub Container Registry (GHCR)
         if: steps.meta.outputs.should_push == 'true'
@@ -183,13 +194,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub (optional)
-        if: steps.meta.outputs.should_push == 'true' && steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Assemble publish tags
         id: tags
@@ -202,22 +206,13 @@ jobs:
             "${GHCR_IMAGE}:${CRUX_VERSION}-${{ steps.meta.outputs.date_tag }}"
             "${GHCR_IMAGE}:sha-${{ steps.meta.outputs.short_sha }}"
           )
-          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-            TAGS+=(
-              "${DOCKERHUB_IMAGE}:latest"
-              "${DOCKERHUB_IMAGE}:rolling"
-              "${DOCKERHUB_IMAGE}:${CRUX_VERSION}"
-              "${DOCKERHUB_IMAGE}:${CRUX_VERSION}-${{ steps.meta.outputs.date_tag }}"
-              "${DOCKERHUB_IMAGE}:sha-${{ steps.meta.outputs.short_sha }}"
-            )
-          fi
           {
             echo "list<<EOF"
             printf '%s\n' "${TAGS[@]}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Push verified image to registries
+      - name: Push verified image to GHCR
         id: push
         if: steps.meta.outputs.should_push == 'true'
         uses: docker/build-push-action@v6
@@ -228,31 +223,7 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.list }}
           build-args: |
-            ROOTFS_TARBALL=build/crux-rootfs.tar.xz
+            ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
             CRUX_VERSION=${{ env.CRUX_VERSION }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
             VCS_REF=${{ steps.meta.outputs.short_sha }}
-
-      - name: Write workflow summary
-        env:
-          PUBLISHED_TAGS: ${{ steps.tags.outputs.list }}
-        run: |
-          {
-            echo "### CRUX Rolling Base Image Build"
-            echo ""
-            echo "- **CRUX Version:** \`${CRUX_VERSION}\`"
-            echo "- **ISO Source:** \`${{ inputs.iso_url || env.DEFAULT_ISO_URL }}\`"
-            echo "- **Rootfs Tarball Size:** \`${TARBALL_SIZE}\`"
-            echo "- **Verification:** Passed (\`scripts/verify-image.sh\`)"
-            if [ "${{ steps.meta.outputs.should_push }}" = "true" ]; then
-              echo "- **Digest:** \`${{ steps.push.outputs.digest }}\`"
-              echo "- **Docker Hub Mirror:** \`${{ steps.dockerhub.outputs.enabled }}\`"
-              echo ""
-              echo "#### Published Tags"
-              echo '```text'
-              printf '%s\n' "$PUBLISHED_TAGS"
-              echo '```'
-            else
-              echo "- **Push:** Skipped (pull request or push disabled)"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
