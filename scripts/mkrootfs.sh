@@ -208,10 +208,18 @@ if [[ -f "${BUILD_ABS}/kpm-cache/index.json" ]]; then
         fi
         if [[ "${#TO_INSTALL[@]}" -gt 0 ]]; then
             echo "[mkrootfs] Installing ${#TO_INSTALL[@]} remaining live package(s) from remote index via kpm..."
-            "$KPM_BIN" --config "$HOST_KPM_INI" --root="$ROOTFS_DIR" install --deps --reinstall "${TO_INSTALL[@]}"
+            "$KPM_BIN" --config "$HOST_KPM_INI" --root="$ROOTFS_DIR" install --deps --reinstall --force "${TO_INSTALL[@]}"
         fi
     fi
 fi
+
+# Re-apply canonical live ISO kpm/ports/pkgadd configs & release key after package installs
+# so package default files never clobber the live ISO's pre-configured settings.
+install -m 0644 "$KPM_INI_SRC" "${ROOTFS_DIR}/etc/kpm.ini"
+install -m 0644 "$PUBKEY_SRC" "${ROOTFS_DIR}/etc/kpm/keys/kryx-release.pub"
+ln -sf /etc/kpm.ini "${ROOTFS_DIR}/etc/kpm/kpm.ini"
+install -m 0644 "${REPO_ROOT}/config/pkgadd.conf" "${ROOTFS_DIR}/etc/pkgadd.conf"
+install -m 0644 "${REPO_ROOT}/config/sources.list" "${ROOTFS_DIR}/etc/ports/sources.list"
 
 # 3. Install kernel (NEVER from prebuiltkernel.org):
 #    Priority: --kernel-dir (default: CRUX ISO kernel) > --kernel-tar > --kernel-pkg

@@ -196,8 +196,20 @@ fi
 
 if [[ "${#INSTALL_LIST[@]}" -gt 0 ]]; then
     echo "[setup] Installing ${#INSTALL_LIST[@]} package(s) via kpm --root=${TARGET_ROOT}..."
-    "$KPM_BIN" --config "$TMP_KPM_INI" --root="$TARGET_ROOT" install --deps --reinstall "${INSTALL_LIST[@]}"
+    "$KPM_BIN" --config "$TMP_KPM_INI" --root="$TARGET_ROOT" install --deps --reinstall --force "${INSTALL_LIST[@]}"
 fi
+
+# Re-apply live kpm, ports, pkgadd, and release key configs into target rootfs so package
+# defaults never overwrite the configured repo/key settings.
+for cfg_file in /etc/kpm.ini /etc/pkgadd.conf /etc/ports/sources.list /etc/resolv.conf; do
+    if [[ -r "$cfg_file" ]]; then
+        install -D -m 0644 "$cfg_file" "${ROOT_PREFIX}${cfg_file}"
+    fi
+done
+if [[ -d /etc/kpm/keys ]]; then
+    cp -a /etc/kpm/keys/. "${ROOT_PREFIX}/etc/kpm/keys/"
+fi
+ln -sf /etc/kpm.ini "${ROOT_PREFIX}/etc/kpm/kpm.ini"
 
 # 6. Ensure target has a bootable kernel (fallback to live CRUX ISO kernel if no kernel pkg was installed).
 if ! ls "${ROOT_PREFIX}"/boot/vmlinuz* >/dev/null 2>&1; then
