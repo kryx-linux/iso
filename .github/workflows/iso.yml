@@ -58,6 +58,7 @@ env:
   KERNEL_VERSION: ${{ inputs.kernel_version || '6.18.63' }}
   CRUX_ISO_URL: ${{ inputs.crux_iso_url || 'https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso' }}
   GHCR_IMAGE: ghcr.io/kryx-linux/iso
+  DOCKER_BUILD_NO_SUMMARY: "true"
 
 jobs:
   lint:
@@ -163,14 +164,20 @@ jobs:
             ROOTFS_TARBALL=build/kryx-rootfs.tar.xz
             CRUX_VERSION=${{ env.CRUX_VERSION }}
 
-      - name: Upload static binaries, seed packages, and base rootfs tarball
+      - name: Upload static binaries and base rootfs tarball
         uses: actions/upload-artifact@v4
         with:
           name: kryx-base-artifacts
           path: |
             build/bin/
-            build/seed-pkgs.tar
             build/kryx-rootfs.tar.xz
+          retention-days: 1
+
+      - name: Upload extracted CRUX 3.8 seed packages (for essential pkg builder)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-seed-pkgs
+          path: build/seed-pkgs.tar
           retention-days: 1
 
   build-essential-pkgs:
@@ -185,6 +192,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: kryx-base-artifacts
+          path: build
+
+      - name: Download CRUX 3.8 seed packages
+        uses: actions/download-artifact@v4
+        with:
+          name: kryx-seed-pkgs
           path: build
 
       - name: Prepare ports tree (core, opt, contrib, rolling) & seed packages
@@ -295,10 +308,23 @@ jobs:
       - name: Checkout iso repository
         uses: actions/checkout@v4
 
-      - name: Download base, essential packages, and kernel artifacts
+      - name: Download base artifacts (kpm binaries + rootfs tarball)
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: kryx-base-artifacts
+          path: artifacts/kryx-base-artifacts
+
+      - name: Download verified essential packages bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: kryx-essential-pkgs
+          path: artifacts/kryx-essential-pkgs
+
+      - name: Download staged CRUX ISO kernel
+        uses: actions/download-artifact@v4
+        with:
+          name: kryx-kernel-stage
+          path: artifacts/kryx-kernel-stage
 
       - name: Install ISO & GRUB BIOS+UEFI build tools
         run: |
