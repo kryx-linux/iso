@@ -17,30 +17,34 @@ cat /etc/os-release
 crux
 echo "PATH=${PATH}"
 echo "LANG=${LANG:-unset} LC_ALL=${LC_ALL:-unset}"
-echo "SSL_CERT_FILE=${SSL_CERT_FILE:-unset} PE_CONFIG=${PE_CONFIG:-unset}"
+echo "SSL_CERT_FILE=${SSL_CERT_FILE:-unset} KPM_CONFIG=${KPM_CONFIG:-unset}"
 
-echo "=== 2. Package Database & pe Checks ==="
+echo "=== 2. Package Database & kpm Checks ==="
 test -s /var/lib/pkg/db
-test -s /etc/pe.ini
-grep -q "ports_dir = /usr/ports" /etc/pe.ini
-grep -q "repository = kryx-linux/ports" /etc/pe.ini
-grep -q "tag = rolling-x86_64" /etc/pe.ini
+test -s /etc/kpm.ini
+grep -q "ports_dir = /usr/ports" /etc/kpm.ini
+grep -q "repository = kryx-linux/ports" /etc/kpm.ini
+grep -q "tag = rolling-x86_64" /etc/kpm.ini
 
-pe --version
-INSTALLED_LIST="$(pe list)"
+kpm --version
+INSTALLED_LIST="$(kpm list)"
 INSTALLED_COUNT="$(printf '%s\n' "${INSTALLED_LIST}" | wc -l)"
 echo "Installed packages in /var/lib/pkg/db: ${INSTALLED_COUNT}"
 test "${INSTALLED_COUNT}" -gt 20
 
-PORTS_LIST="$(pe list --ports)"
+PORTS_LIST="$(kpm list --ports)"
 PORTS_COUNT="$(printf '%s\n' "${PORTS_LIST}" | wc -l)"
 echo "Available ports in /usr/ports: ${PORTS_COUNT}"
 test "${PORTS_COUNT}" -gt 50
 grep -q "^core/bash$" <<< "${PORTS_LIST}"
 grep -q "^core/pkgutils$" <<< "${PORTS_LIST}"
 
-PE_INDEX_HELP="$(pe-index --help 2>&1 || true)"
-grep -q "Usage of pe-index" <<< "${PE_INDEX_HELP}"
+KPM_INDEX_HELP="$(kpm-index --help 2>&1 || true)"
+grep -q "Usage of kpm-index" <<< "${KPM_INDEX_HELP}"
+
+for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge; do
+    "${link}" --version
+done
 
 if [ -x /usr/bin/kryx-src ]; then
     kryx-src --version

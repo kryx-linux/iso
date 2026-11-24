@@ -9,8 +9,8 @@ ARG VCS_REF=unknown
 
 ADD ${ROOTFS_TARBALL} /
 
-LABEL org.opencontainers.image.title="CRUX Linux Rolling Base Image (Unofficial)" \
-      org.opencontainers.image.description="Unofficial automated rolling CRUX Linux container base image for CI and GitHub Actions with pe package manager." \
+LABEL org.opencontainers.image.title="CRUX/KryX Linux Rolling Base Image (Unofficial)" \
+      org.opencontainers.image.description="Unofficial automated rolling CRUX/KryX Linux container base image for CI and GitHub Actions with kpm package manager." \
       org.opencontainers.image.url="https://github.com/kryx-linux/image" \
       org.opencontainers.image.source="https://github.com/kryx-linux/image" \
       org.opencontainers.image.vendor="kryx-linux" \
@@ -24,7 +24,7 @@ ENV PATH="/sbin:/usr/sbin:/opt/sbin:/bin:/usr/bin:/opt/bin" \
     LC_ALL="C.UTF-8" \
     TERM="xterm-256color" \
     SSL_CERT_FILE="/etc/ssl/cert.pem" \
-    PE_CONFIG="/etc/pe.ini"
+    KPM_CONFIG="/etc/kpm.ini"
 
 WORKDIR /root
 

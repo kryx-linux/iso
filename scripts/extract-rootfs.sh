@@ -16,7 +16,7 @@ ROOTFS_TAR=""
 SQUASHFS_PATH=""
 OUTPUT_DIR="${REPO_ROOT}/build/rootfs"
 WORK_DIR="${REPO_ROOT}/build/work"
-PE_BIN="${REPO_ROOT}/build/bin/pe"
+KPM_BIN="${REPO_ROOT}/build/bin/kpm"
 EXCLUDE_FILE="${REPO_ROOT}/config/core-exclude.txt"
 FULL_CORE=0
 INCLUDE_OPT=""
@@ -37,11 +37,11 @@ Source options (mutually exclusive; defaults to downloading upstream rolling CRU
 Build options:
   --output <dir>            Target rootfs directory (default: build/rootfs)
   --work-dir <dir>          Working/cache directory (default: build/work)
-  --pe-bin <path>           Path to static pe binary (default: build/bin/pe)
+  --kpm-bin <path>          Path to static kpm binary (default: build/bin/kpm)
   --exclude-file <path>     CRUX core package exclusion list (default: config/core-exclude.txt)
   --full-core               Install every package in CRUX core (ignore --exclude-file)
   --include-opt <csv>       Comma-separated extra package names to include from ISO /crux/opt
-  --installer-mode <mode>   Package installer: auto, pe, pkgadd, bsdtar (default: auto)
+  --installer-mode <mode>   Package installer: auto, kpm, pkgadd, bsdtar (default: auto)
   -h, --help                Show this help message
 EOF
 }
@@ -80,8 +80,8 @@ while [[ $# -gt 0 ]]; do
             WORK_DIR="$2"
             shift 2
             ;;
-        --pe-bin)
-            PE_BIN="$2"
+        --kpm-bin)
+            KPM_BIN="$2"
             shift 2
             ;;
         --exclude-file)
@@ -113,7 +113,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 MOUNT_DIR=""
-TMP_PE_INI=""
+TMP_KPM_INI=""
 cleanup() {
     if [[ -n "$MOUNT_DIR" ]] && mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
         umount "$MOUNT_DIR" || true
@@ -121,8 +121,8 @@ cleanup() {
     if [[ -n "$MOUNT_DIR" && -d "$MOUNT_DIR" ]]; then
         rmdir "$MOUNT_DIR" 2>/dev/null || true
     fi
-    if [[ -n "$TMP_PE_INI" && -f "$TMP_PE_INI" ]]; then
-        rm -f "$TMP_PE_INI"
+    if [[ -n "$TMP_KPM_INI" && -f "$TMP_KPM_INI" ]]; then
+        rm -f "$TMP_KPM_INI"
     fi
 }
 trap cleanup EXIT
@@ -268,8 +268,8 @@ choose_installer() {
         return 0
     fi
     if [[ "$(id -u)" -eq 0 ]]; then
-        if [[ -x "$PE_BIN" ]]; then
-            printf 'pe\n'
+        if [[ -x "$KPM_BIN" ]]; then
+            printf 'kpm\n'
             return 0
         fi
         if command -v pkgadd >/dev/null 2>&1; then
@@ -324,9 +324,9 @@ install_packages() {
     mkdir -p "${OUTPUT_DIR_ABS}/var/lib/pkg"
     : > "${OUTPUT_DIR_ABS}/var/lib/pkg/db"
 
-    if [[ "$installer" == "pe" ]]; then
-        TMP_PE_INI="$(mktemp "${WORK_DIR_ABS}/pe-extract.XXXXXX.ini")"
-        cat > "$TMP_PE_INI" <<EOF
+    if [[ "$installer" == "kpm" ]]; then
+        TMP_KPM_INI="$(mktemp "${WORK_DIR_ABS}/kpm-extract.XXXXXX.ini")"
+        cat > "$TMP_KPM_INI" <<EOF
 [paths]
 root = ${OUTPUT_DIR_ABS}
 pkgadd_conf = ${OUTPUT_DIR_ABS}/etc/pkgadd.conf
@@ -397,8 +397,8 @@ EOF
         name="$(pkg_name_from_file "$pkg")"
         printf '  [%3d/%3d] %s\n' "$count" "${#ordered[@]}" "$(basename "$pkg")"
         case "$installer" in
-            pe)
-                "$PE_BIN" --config "$TMP_PE_INI" install "$pkg" >/dev/null
+            kpm)
+                "$KPM_BIN" --config "$TMP_KPM_INI" install "$pkg" >/dev/null
                 ;;
             pkgadd)
                 pkgadd -r "$OUTPUT_DIR_ABS" "$pkg"

@@ -6,10 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 ROOTFS_DIR="${REPO_ROOT}/build/rootfs"
-PE_BIN="${REPO_ROOT}/build/bin/pe"
-PE_INDEX_BIN="${REPO_ROOT}/build/bin/pe-index"
+KPM_BIN="${REPO_ROOT}/build/bin/kpm"
+KPM_INDEX_BIN="${REPO_ROOT}/build/bin/kpm-index"
 KRYX_SRC_BIN="${REPO_ROOT}/build/bin/kryx-src"
-PE_INI="${REPO_ROOT}/config/pe.ini"
+KPM_INI="${REPO_ROOT}/config/kpm.ini"
 PORTS_CORE_DIR=""
 PORTS_CORE_REPO="https://git.crux.nu/ports/core.git"
 PORTS_CORE_REF="3.8"
@@ -24,9 +24,9 @@ Usage: scripts/customize-rootfs.sh [options]
 
 Options:
   --rootfs <dir>            Prepared CRUX rootfs directory (default: build/rootfs)
-  --pe-bin <path>           Path to static pe binary (default: build/bin/pe)
-  --pe-index-bin <path>     Path to static pe-index binary (default: build/bin/pe-index)
-  --pe-ini <path>           Default pe.ini file to install at /etc/pe.ini (default: config/pe.ini)
+  --kpm-bin <path>          Path to static kpm binary (default: build/bin/kpm)
+  --kpm-index-bin <path>    Path to static kpm-index binary (default: build/bin/kpm-index)
+  --kpm-ini <path>          Default kpm.ini file to install at /etc/kpm.ini (default: config/kpm.ini)
   --ports-core-dir <dir>    Copy /usr/ports/core from a local checkout
   --ports-core-repo <url>   Clone /usr/ports/core from Git when --ports-core-dir is omitted
   --ports-core-ref <ref>    Git branch/tag for /usr/ports/core (default: 3.8)
@@ -44,16 +44,16 @@ while [[ $# -gt 0 ]]; do
             ROOTFS_DIR="$2"
             shift 2
             ;;
-        --pe-bin)
-            PE_BIN="$2"
+        --kpm-bin)
+            KPM_BIN="$2"
             shift 2
             ;;
-        --pe-index-bin)
-            PE_INDEX_BIN="$2"
+        --kpm-index-bin)
+            KPM_INDEX_BIN="$2"
             shift 2
             ;;
-        --pe-ini)
-            PE_INI="$2"
+        --kpm-ini)
+            KPM_INI="$2"
             shift 2
             ;;
         --ports-core-dir)
@@ -102,7 +102,7 @@ if [[ ! -d "$ROOTFS_DIR" ]]; then
 fi
 ROOTFS_ABS="$(cd "$ROOTFS_DIR" && pwd)"
 
-for req in "$PE_BIN" "$PE_INDEX_BIN" "$PE_INI"; do
+for req in "$KPM_BIN" "$KPM_INDEX_BIN" "$KPM_INI"; do
     if [[ ! -f "$req" ]]; then
         echo "customize-rootfs.sh: error: required file not found: ${req}" >&2
         exit 1
@@ -114,14 +114,17 @@ echo "[customize-rootfs] Customizing CRUX rootfs at ${ROOTFS_ABS}..."
 # 1. Ensure essential directories and permissions exist.
 mkdir -p \
     "${ROOTFS_ABS}/etc" \
+    "${ROOTFS_ABS}/etc/kpm/keys.d" \
     "${ROOTFS_ABS}/etc/profile.d" \
     "${ROOTFS_ABS}/etc/ports" \
     "${ROOTFS_ABS}/etc/ssl/certs" \
     "${ROOTFS_ABS}/usr/bin" \
     "${ROOTFS_ABS}/usr/ports" \
-    "${ROOTFS_ABS}/var/cache/pe/sources" \
-    "${ROOTFS_ABS}/var/cache/pe/packages" \
-    "${ROOTFS_ABS}/var/cache/pe/work" \
+    "${ROOTFS_ABS}/var/cache/kpm/bin" \
+    "${ROOTFS_ABS}/var/cache/kpm/sources" \
+    "${ROOTFS_ABS}/var/cache/kpm/packages" \
+    "${ROOTFS_ABS}/var/cache/kpm/work" \
+    "${ROOTFS_ABS}/var/lib/kpm" \
     "${ROOTFS_ABS}/var/lib/pkg" \
     "${ROOTFS_ABS}/var/tmp" \
     "${ROOTFS_ABS}/tmp" \
@@ -130,13 +133,16 @@ mkdir -p \
 chmod 1777 "${ROOTFS_ABS}/tmp" "${ROOTFS_ABS}/var/tmp"
 chmod 0750 "${ROOTFS_ABS}/root"
 
-# 2. Install pe, pe-index, kryx-src (if built), and default /etc/pe.ini.
-install -m 0755 "$PE_BIN" "${ROOTFS_ABS}/usr/bin/pe"
-install -m 0755 "$PE_INDEX_BIN" "${ROOTFS_ABS}/usr/bin/pe-index"
+# 2. Install kpm, kpm-index, kryx-src (if built), CRUX compatibility symlinks, and /etc/kpm.ini.
+install -m 0755 "$KPM_BIN" "${ROOTFS_ABS}/usr/bin/kpm"
+install -m 0755 "$KPM_INDEX_BIN" "${ROOTFS_ABS}/usr/bin/kpm-index"
 if [[ -f "$KRYX_SRC_BIN" ]]; then
     install -m 0755 "$KRYX_SRC_BIN" "${ROOTFS_ABS}/usr/bin/kryx-src"
 fi
-install -m 0644 "$PE_INI" "${ROOTFS_ABS}/etc/pe.ini"
+for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge; do
+    ln -sf kpm "${ROOTFS_ABS}/usr/bin/${link}"
+done
+install -m 0644 "$KPM_INI" "${ROOTFS_ABS}/etc/kpm.ini"
 
 # 3. Verify CA certificates (/etc/ssl/cert.pem from CRUX ca-certificates) and add compatibility symlink.
 if [[ ! -s "${ROOTFS_ABS}/etc/ssl/cert.pem" ]]; then
@@ -205,7 +211,7 @@ export PATH="/sbin:/usr/sbin:/opt/sbin:/bin:/usr/bin:/opt/bin"
 export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}"
-export PE_CONFIG="${PE_CONFIG:-/etc/pe.ini}"
+export KPM_CONFIG="${KPM_CONFIG:-/etc/kpm.ini}"
 EOF
 chmod 0644 "${ROOTFS_ABS}/etc/profile.d/crux-ci.sh"
 
@@ -237,7 +243,7 @@ EOF
     chmod 0644 "${ROOTFS_ABS}/etc/profile"
 fi
 
-# 6. Populate /usr/ports/core so `pe list --ports` and `pe build` work immediately.
+# 6. Populate /usr/ports/core so `kpm list --ports` and `kpm build` work immediately.
 if [[ "$SKIP_PORTS" -eq 0 ]]; then
     rm -rf "${ROOTFS_ABS}/usr/ports/core"
     mkdir -p "${ROOTFS_ABS}/usr/ports/core"

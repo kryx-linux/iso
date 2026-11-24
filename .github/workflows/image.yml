@@ -27,8 +27,8 @@ on:
         required: false
         type: string
         default: "3.8"
-      pe_ref:
-        description: "Git ref of kryx-linux/pe to build"
+      kpm_ref:
+        description: "Git ref of kryx-linux/kpm to build"
         required: false
         type: string
         default: "main"
@@ -64,17 +64,17 @@ jobs:
       - name: Checkout image repository
         uses: actions/checkout@v4
 
-      - name: Checkout kryx-linux/pe
+      - name: Checkout kryx-linux/kpm
         uses: actions/checkout@v4
         with:
-          repository: kryx-linux/pe
-          ref: ${{ inputs.pe_ref || 'main' }}
-          path: _pe
+          repository: kryx-linux/kpm
+          ref: ${{ inputs.kpm_ref || 'main' }}
+          path: _kpm
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: _pe/go.mod
+          go-version-file: _kpm/go.mod
 
       - name: Install host extraction and archive tools
         run: |
@@ -90,8 +90,8 @@ jobs:
       - name: Lint shell scripts
         run: make lint
 
-      - name: Build and test static pe and pe-index binaries
-        run: ./scripts/build-pe.sh --src _pe --out build/bin --test
+      - name: Build and test static kpm, kpm-index, and kryx-src binaries
+        run: ./scripts/build-kpm.sh --src _kpm --out build/bin --test
 
       - name: Extract and customize CRUX rootfs
         env:
@@ -103,7 +103,7 @@ jobs:
             --iso-url "$ISO_URL"
             --output build/rootfs
             --work-dir build/work
-            --pe-bin build/bin/pe
+            --kpm-bin build/bin/kpm
           )
           if [ -n "$ISO_SHA256" ]; then
             EXTRACT_ARGS+=(--iso-sha256 "$ISO_SHA256")
@@ -117,9 +117,9 @@ jobs:
           sudo ./scripts/extract-rootfs.sh "${EXTRACT_ARGS[@]}"
           sudo ./scripts/customize-rootfs.sh \
             --rootfs build/rootfs \
-            --pe-bin build/bin/pe \
-            --pe-index-bin build/bin/pe-index \
-            --pe-ini config/pe.ini \
+            --kpm-bin build/bin/kpm \
+            --kpm-index-bin build/bin/kpm-index \
+            --kpm-ini config/kpm.ini \
             --ports-core-repo https://git.crux.nu/ports/core.git \
             --ports-core-ref "${CRUX_VERSION}" \
             --tarball build/crux-rootfs.tar.xz
