@@ -34,11 +34,10 @@ libmnl
 libnftnl
 nftables
 
-# Host indexing, large manpages/typesetting, and 32-bit multilib extras
-glibc-32
+# Host indexing and large manpages/typesetting
+# Note: `glibc-32` and `libxcrypt-32` are intentionally KEPT so multilib (`-m32` / gcc) builds work out of the box.
 groff
 libpipeline
-libxcrypt-32
 man-db
 man-pages
 mlocate
