@@ -95,9 +95,10 @@ mkdir -p \
 # Copy busybox and, if dynamically linked, its required shared libraries.
 install -m 0755 "$BUSYBOX_BIN" "${STAGE}/bin/busybox"
 if command -v ldd >/dev/null 2>&1; then
-    if ! ldd "$BUSYBOX_BIN" 2>&1 | grep -qE 'not a dynamic executable|statically linked'; then
+    LDD_OUT="$(ldd "$BUSYBOX_BIN" 2>&1 || true)"
+    if ! printf '%s\n' "$LDD_OUT" | grep -qE 'not a dynamic executable|statically linked'; then
         echo "[mkinitramfs] Busybox is dynamically linked; bundling shared libraries..."
-        ldd "$BUSYBOX_BIN" | awk '/=> \// { print $3 } /^\// { print $1 }' | while read -r lib; do
+        printf '%s\n' "$LDD_OUT" | awk '/=> \// { print $3 } /^\// { print $1 }' | while read -r lib; do
             if [[ -f "$lib" ]]; then
                 mkdir -p "${STAGE}$(dirname "$lib")"
                 cp -L "$lib" "${STAGE}${lib}"

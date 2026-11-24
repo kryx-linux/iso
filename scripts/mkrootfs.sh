@@ -230,6 +230,8 @@ if [[ -n "$KERNEL_DIR" ]]; then
         exit 1
     fi
     cp -a "${KERNEL_DIR}/." "${ROOTFS_DIR}/"
+    chown -R 0:0 "${ROOTFS_DIR}/boot" "${ROOTFS_DIR}/lib/modules" 2>/dev/null || true
+    [[ -d "${ROOTFS_DIR}/usr/src" ]] && chown -R 0:0 "${ROOTFS_DIR}/usr/src" 2>/dev/null || true
 elif [[ -n "$KERNEL_TAR" ]]; then
     if [[ ! -f "$KERNEL_TAR" ]]; then
         echo "mkrootfs.sh: error: --kernel-tar not found: ${KERNEL_TAR}" >&2
