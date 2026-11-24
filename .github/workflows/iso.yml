@@ -202,9 +202,11 @@ jobs:
             git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "build/ports-tree/${col}"
           done
           git clone --depth 1 https://github.com/kryx-linux/ports.git build/ports-rolling-tmp
-          if [ -d build/ports-rolling-tmp/rolling ]; then
-            cp -a build/ports-rolling-tmp/rolling build/ports-tree/rolling
-          fi
+          for col_dir in pkg-tools kernel rolling; do
+            if [ -d "build/ports-rolling-tmp/${col_dir}" ]; then
+              cp -a "build/ports-rolling-tmp/${col_dir}" "build/ports-tree/${col_dir}"
+            fi
+          done
           rm -rf build/ports-rolling-tmp
 
       - name: Ensure every core & necessary live package is built inside KryX container

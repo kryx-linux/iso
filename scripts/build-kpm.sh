@@ -86,7 +86,9 @@ if [[ ! -f "${KPM_SRC}/go.mod" ]]; then
 fi
 
 if [[ -z "$KPM_VERSION" ]]; then
-    if git -C "$KPM_SRC" rev-parse --git-dir >/dev/null 2>&1; then
+    if [[ -f "${KPM_SRC}/VERSION" ]]; then
+        KPM_VERSION="$(tr -d '[:space:]' < "${KPM_SRC}/VERSION")"
+    elif git -C "$KPM_SRC" rev-parse --git-dir >/dev/null 2>&1; then
         KPM_VERSION="$(git -C "$KPM_SRC" describe --tags --always 2>/dev/null || echo "0.6.0")"
     else
         KPM_VERSION="0.6.0"
@@ -95,7 +97,7 @@ fi
 
 MODFLAG=""
 [[ -d "${KPM_SRC}/vendor" ]] && MODFLAG="-mod=vendor"
-LDFLAGS="-s -w -X github.com/kryx-linux/kpm/internal/cli.Version=${KPM_VERSION}"
+LDFLAGS="-s -w -X github.com/kryx-linux/kpm.Version=${KPM_VERSION} -X github.com/kryx-linux/kpm/internal/cli.Version=${KPM_VERSION}"
 
 if [[ "$RUN_TESTS" -eq 1 ]]; then
     echo "[build-kpm] Running go test ./..."
