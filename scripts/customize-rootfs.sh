@@ -209,7 +209,25 @@ EOF
     chmod 0644 "${ROOTFS_ABS}/etc/resolv.conf"
 fi
 
-# 5. Timezone, locale, and shell PATH defaults.
+# 5. KryX OS identity, timezone, locale, and shell PATH defaults.
+cat > "${ROOTFS_ABS}/etc/os-release" <<'EOF'
+NAME="KryX Linux"
+VERSION_ID="rolling-3.8"
+ID=kryx
+ID_LIKE=crux
+PRETTY_NAME="KryX Linux (Rolling)"
+HOME_URL="https://kryx.anrix.org"
+DOCUMENTATION_URL="https://kryx.anrix.org/docs/"
+BUG_REPORT_URL="https://github.com/kryx-linux/ports/issues"
+EOF
+chmod 0644 "${ROOTFS_ABS}/etc/os-release"
+
+cat > "${ROOTFS_ABS}/usr/bin/kryx" <<'EOF'
+#!/bin/sh
+echo "KryX Linux rolling (x86_64)"
+EOF
+chmod 0755 "${ROOTFS_ABS}/usr/bin/kryx"
+
 if [[ -f "${ROOTFS_ABS}/usr/share/zoneinfo/UTC" ]]; then
     ln -sf ../usr/share/zoneinfo/UTC "${ROOTFS_ABS}/etc/localtime"
 fi

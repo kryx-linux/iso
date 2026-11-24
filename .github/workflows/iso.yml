@@ -259,36 +259,46 @@ jobs:
           retention-days: 1
 
   build-kernel:
-    needs: lint
+    needs: build-base-and-seed
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - name: Checkout iso repository
         uses: actions/checkout@v4
 
-      - name: Restore cached CRUX ISO kernel stage
-        id: kernel-cache
-        uses: actions/cache@v4
+      - name: Download KryX base artifacts (to compile kernel inside KryX container)
+        uses: actions/download-artifact@v4
         with:
-          path: build/kernel-stage
-          key: crux-iso-kernel-${{ env.KERNEL_VERSION }}-${{ hashFiles('kernel/linux-*.config', 'kernel/kryx-live.fragment', 'scripts/mkkernel.sh') }}
+          name: kryx-base-artifacts
+          path: build
 
-      - name: Install kernel build dependencies
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
+      - name: Compile KryX kernel fresh inside KryX container (no CRUX kernel cache)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential curl flex libelf-dev libssl-dev xz-utils
+          # Build local KryX container image so kernel compiles with KryX's own toolchain
+          # (and KryX-x86_64 CC version branding, -kryx localversion, builder@kryx identity).
+          docker build \
+            --build-arg ROOTFS_TARBALL=build/kryx-rootfs.tar.xz \
+            --build-arg CRUX_VERSION="${CRUX_VERSION}" \
+            -t kryx-linux/iso:kernel-builder .
 
-      - name: Compile CRUX ISO kernel (linux-${{ env.KERNEL_VERSION }} + kryx-live.fragment)
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        run: |
-          ./scripts/mkkernel.sh \
-            --version "${KERNEL_VERSION}" \
-            --build-dir build \
-            --jobs "$(nproc)"
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            kryx-linux/iso:kernel-builder \
+            /work/scripts/mkkernel.sh \
+              --version "${KERNEL_VERSION}" \
+              --localversion "-kryx" \
+              --hostname "kryx" \
+              --cc-brand "KryX-x86_64" \
+              --build-user "builder" \
+              --build-host "kryx" \
+              --build-dir /work/build \
+              --jobs "$(nproc)" \
+              --force
 
-      - name: Pack staged kernel artifact
+          sudo chown -R "$(id -u):$(id -g)" build/kernel-stage
+
+      - name: Pack staged KryX kernel artifact
         run: |
           tar -cf build/kernel-stage.tar -C build/kernel-stage .
           ls -lh build/kernel-stage.tar

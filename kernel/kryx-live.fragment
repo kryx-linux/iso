@@ -1,5 +1,7 @@
-# KryX Linux live ISO Kconfig fragment applied on top of CRUX's ISO kernel config
-# (kernel/linux-6.18.63.config) so live SquashFS + OverlayFS root mounts cleanly.
+# KryX Linux live ISO Kconfig fragment applied on top of our adapted kernel config
+# (kernel/linux-6.18.63.config) for KryX identity + live SquashFS/OverlayFS boot.
+CONFIG_LOCALVERSION="-kryx"
+CONFIG_DEFAULT_HOSTNAME="kryx"
 CONFIG_SQUASHFS=m
 CONFIG_SQUASHFS_XATTR=y
 CONFIG_SQUASHFS_ZLIB=y

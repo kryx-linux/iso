@@ -36,12 +36,17 @@ IMAGE_TAG       ?= latest
 BUILD_DATE      ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 VCS_REF         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
-# --- Live ISO + CRUX ISO Kernel settings ---
-ISO_OUT         ?= kryx-linux-x86_64.iso
-KERNEL_SOURCE   ?= crux-iso
-KERNEL_VERSION  ?= 6.18.63
-KERNEL_MIRROR   ?= https://cdn.kernel.org
-KERNEL_JOBS     ?= $(shell nproc 2>/dev/null || echo 2)
+# --- Live ISO + KryX Kernel (adopted from CRUX config, built fresh with KryX CC brand) ---
+ISO_OUT           ?= kryx-linux-x86_64.iso
+KERNEL_SOURCE     ?= crux-iso
+KERNEL_VERSION    ?= 6.18.63
+KERNEL_MIRROR     ?= https://cdn.kernel.org
+KRYX_LOCALVERSION ?= -kryx
+KRYX_HOSTNAME     ?= kryx
+KRYX_CC_BRAND     ?= KryX-x86_64
+KBUILD_BUILD_USER ?= builder
+KBUILD_BUILD_HOST ?= kryx
+KERNEL_JOBS       ?= $(shell nproc 2>/dev/null || echo 2)
 KERNEL_SRC_TAR  ?=
 KERNEL_PKG      ?= kernel
 KERNEL_TAR      ?=
@@ -94,7 +99,7 @@ else
 CUSTOMIZE_FLAGS += --ports-core-repo "$(CORE_PORTS_REPO)" --ports-core-ref "$(CORE_PORTS_REF)"
 endif
 
-KERNEL_FLAGS := --version "$(KERNEL_VERSION)" --mirror "$(KERNEL_MIRROR)" --build-dir "$(BUILD_DIR)" --jobs "$(KERNEL_JOBS)"
+KERNEL_FLAGS := --version "$(KERNEL_VERSION)" --mirror "$(KERNEL_MIRROR)" --localversion "$(KRYX_LOCALVERSION)" --hostname "$(KRYX_HOSTNAME)" --cc-brand "$(KRYX_CC_BRAND)" --build-user "$(KBUILD_BUILD_USER)" --build-host "$(KBUILD_BUILD_HOST)" --build-dir "$(BUILD_DIR)" --jobs "$(KERNEL_JOBS)"
 ifneq ($(strip $(KERNEL_SRC_TAR)),)
 KERNEL_FLAGS += --src-tar "$(KERNEL_SRC_TAR)"
 endif
