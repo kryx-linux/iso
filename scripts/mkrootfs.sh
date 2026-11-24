@@ -101,7 +101,7 @@ mkdir -p \
     "${ROOTFS_DIR}/boot" \
     "${ROOTFS_DIR}/dev" \
     "${ROOTFS_DIR}/etc/kpm/keys" \
-    "${ROOTFS_DIR}/etc/gports/sources.list.d" \
+    "${ROOTFS_DIR}/etc/ports/sources.list.d" \
     "${ROOTFS_DIR}/etc/profile.d" \
     "${ROOTFS_DIR}/etc/ssl/certs" \
     "${ROOTFS_DIR}/home" \
@@ -137,7 +137,7 @@ install -m 0644 "$KPM_INI_SRC" "${ROOTFS_DIR}/etc/kpm.ini"
 install -m 0644 "$PUBKEY_SRC" "${ROOTFS_DIR}/etc/kpm/keys/kryx-release.pub"
 ln -sf /etc/kpm.ini "${ROOTFS_DIR}/etc/kpm/kpm.ini"
 install -m 0644 "${REPO_ROOT}/config/pkgadd.conf" "${ROOTFS_DIR}/etc/pkgadd.conf"
-install -m 0644 "${REPO_ROOT}/config/sources.list" "${ROOTFS_DIR}/etc/gports/sources.list"
+install -m 0644 "${REPO_ROOT}/config/sources.list" "${ROOTFS_DIR}/etc/ports/sources.list"
 
 HOST_KPM_INI="${BUILD_ABS}/kpm.build.ini"
 sed \

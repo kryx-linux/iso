@@ -2,17 +2,17 @@
 
 Unified repository for building **both**:
 1. **KryX Linux Live / Installer ISO (`kryx-linux-x86_64.iso`)** — minimal, CRUX-inspired, strictly **`kpm`**-driven live image using **CRUX's ISO kernel (`linux-6.18.63`)** + SquashFS/OverlayFS `initramfs` and **GRUB** hybrid BIOS + UEFI boot.
-2. **KryX Linux Rolling OCI Base Container (`ghcr.io/kryx-linux/iso:latest`)** & RootFS tarball (`kryx-rootfs-x86_64-rolling.tar.xz`) — automated CI build environment shipping static `kpm`, `kpm-index`, `kryx-src`, `gports`, CRUX multi-call symlinks, and `/etc/kpm/keys/kryx-release.pub`.
+2. **KryX Linux Rolling OCI Base Container (`ghcr.io/kryx-linux/iso:latest`)** & RootFS tarball (`kryx-rootfs-x86_64-rolling.tar.xz`) — automated CI build environment shipping static `kpm` (with integrated pure-Go `ports`), `kpm-index`, `kryx-src`, CRUX multi-call symlinks, and `/etc/kpm/keys/kryx-release.pub`.
 
 ## Architecture
 
 - **100% `kpm`-driven (zero `pkgadd`/`pkgmk` install calls):** Both `scripts/mkrootfs.sh` and the live installer (`bin/setup`) install packages via `kpm --root=...`.
-- **Pre-configured `/etc/kpm/`:** Ships `/etc/kpm.ini`, `/etc/kpm/kpm.ini`, `/etc/gports/sources.list`, and the official release public key `/etc/kpm/keys/kryx-release.pub` (Key ID `2528a8ef6bb01ca3`, Fingerprint `SHA256:JSio72uwHKPFO8HgwqaTitUg26aaKcZxLlwRHIjtSg8`).
+- **Pre-configured `/etc/kpm/` & `/etc/ports/`:** Ships `/etc/kpm.ini`, `/etc/kpm/kpm.ini`, `/etc/ports/sources.list`, and the official release public key `/etc/kpm/keys/kryx-release.pub` (Key ID `2528a8ef6bb01ca3`, Fingerprint `SHA256:JSio72uwHKPFO8HgwqaTitUg26aaKcZxLlwRHIjtSg8`).
 - **CRUX ISO Kernel (`linux-6.18.63`) + Initramfs:** Uses CRUX 3.8 ISO's official [`kernel/linux-6.18.63.config`](kernel/linux-6.18.63.config) + [`kernel/linux-6.18.63.defconfig`](kernel/linux-6.18.63.defconfig) compiled from `cdn.kernel.org` with [`kernel/kryx-live.fragment`](kernel/kryx-live.fragment) (`CONFIG_SQUASHFS` ZSTD/XZ/ZLIB + `CONFIG_OVERLAY_FS` + `CONFIG_EFI_STUB`)—never `prebuiltkernel.org`. Still supports `KERNEL_SOURCE=kpm`, `KERNEL_DIR`, or `KERNEL_TAR` overrides.
 - **Guaranteed Core & Essential Packages:** `scripts/build-essential-pkgs.sh` ensures every package listed in [`config/packages.live`](config/packages.live) exists (reusing CRUX 3.8 core/opt seed packages or the `kpm` binary index, and building any missing package from `kryx-linux/{core,opt,contrib,ports}` via `kpm build`), and `scripts/mkrootfs.sh` verifies every critical live binary before packing `live/rootfs.squashfs`.
 - **Hybrid BIOS + UEFI GRUB:** Generates `kryx-linux-x86_64.iso` via `grub-mkrescue` / `grub2-mkrescue` + `xorriso` and validates boot records + SquashFS via `scripts/verify-iso.sh`.
 - **GitHub Actions CI:**
-  - [`.github/workflows/iso.yml`](.github/workflows/iso.yml) — builds static `kpm`/`gports`, base container & RootFS, builds any missing core/essential packages inside the KryX container, compiles & caches CRUX ISO's `linux-6.18.63` kernel, creates & verifies `kryx-linux-x86_64.iso`, and publishes ISO + RootFS + `SHA256SUMS.txt` to GitHub Releases.
+  - [`.github/workflows/iso.yml`](.github/workflows/iso.yml) — builds static `kpm` (with integrated `ports`), base container & RootFS, builds any missing core/essential packages inside the KryX container, compiles & caches CRUX ISO's `linux-6.18.63` kernel, creates & verifies `kryx-linux-x86_64.iso`, and publishes ISO + RootFS + `SHA256SUMS.txt` to GitHub Releases.
   - [`.github/workflows/image.yml`](.github/workflows/image.yml) — fast container-only rebuild & publish to `ghcr.io/kryx-linux/iso`.
 
 ## Host Prerequisites

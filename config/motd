@@ -2,7 +2,7 @@
   Welcome to KryX Linux Live (x86_64)
 ========================================================================
   Package manager : kpm   (config: /etc/kpm.ini, key: /etc/kpm/keys/kryx-release.pub)
-  Ports sync      : gports
+  Ports sync      : ports (built into kpm)
   Handbook (CLI)  : curl -s https://kryx.anrix.org/install.txt | less
 
   Quick install steps:

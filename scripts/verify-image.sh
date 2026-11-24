@@ -49,9 +49,8 @@ done
 if [ -x /usr/bin/kryx-src ]; then
     kryx-src --version
 fi
-if [ -x /usr/bin/gports ]; then
-    gports --version
-fi
+ports --version
+test -s /etc/ports/sources.list
 test -s /etc/kpm/keys/kryx-release.pub
 grep -q "2528a8ef6bb01ca3" /etc/kpm/keys/kryx-release.pub
 

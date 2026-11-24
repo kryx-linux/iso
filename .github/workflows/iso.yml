@@ -29,11 +29,6 @@ on:
         required: false
         type: string
         default: "main"
-      gports_ref:
-        description: "Git ref of kryx-linux/gports"
-        required: false
-        type: string
-        default: "main"
       rebuild_all_pkgs:
         description: "Rebuild every packages.live package from source instead of reusing seed/remote binaries"
         required: false
@@ -90,13 +85,6 @@ jobs:
           ref: ${{ inputs.kpm_ref || 'main' }}
           path: _kpm
 
-      - name: Checkout kryx-linux/gports
-        uses: actions/checkout@v4
-        with:
-          repository: kryx-linux/gports
-          ref: ${{ inputs.gports_ref || 'main' }}
-          path: _gports
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -108,8 +96,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl git libarchive-tools xz-utils zstd
 
-      - name: Build static kpm, kpm-index, kryx-src, and gports
-        run: ./scripts/build-kpm.sh --src _kpm --gports-src _gports --out build/bin --test
+      - name: Build static kpm (with integrated ports), kpm-index, and kryx-src
+        run: ./scripts/build-kpm.sh --src _kpm --out build/bin --test
 
       - name: Extract CRUX 3.8 core/opt packages and build KryX base rootfs tarball
         run: |
@@ -336,7 +324,6 @@ jobs:
           sudo ./scripts/mkrootfs.sh \
             --build-dir build \
             --kpm-bin build/bin/kpm \
-            --gports-bin build/bin/gports \
             --local-pkgs build/local-pkgs \
             --kernel-dir build/kernel-stage \
             --comp zstd

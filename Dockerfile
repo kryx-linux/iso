@@ -10,7 +10,7 @@ ARG VCS_REF=unknown
 ADD ${ROOTFS_TARBALL} /
 
 LABEL org.opencontainers.image.title="KryX Linux Rolling Base Image" \
-      org.opencontainers.image.description="Automated rolling KryX Linux container base image for CI, GitHub Actions, and ISO builds with kpm, kryx-src, and gports." \
+      org.opencontainers.image.description="Automated rolling KryX Linux container base image for CI, GitHub Actions, and ISO builds with kpm (integrated ports/pkgutils) and kryx-src." \
       org.opencontainers.image.url="https://github.com/kryx-linux/iso" \
       org.opencontainers.image.source="https://github.com/kryx-linux/iso" \
       org.opencontainers.image.vendor="kryx-linux" \

@@ -43,11 +43,6 @@ on:
         required: false
         type: string
         default: "main"
-      gports_ref:
-        description: "Git ref of kryx-linux/gports to build"
-        required: false
-        type: string
-        default: "main"
       full_core:
         description: "Install every CRUX core package (bypass config/core-exclude.txt)"
         required: false
@@ -87,13 +82,6 @@ jobs:
           ref: ${{ inputs.kpm_ref || 'main' }}
           path: _kpm
 
-      - name: Checkout kryx-linux/gports
-        uses: actions/checkout@v4
-        with:
-          repository: kryx-linux/gports
-          ref: ${{ inputs.gports_ref || 'main' }}
-          path: _gports
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -113,8 +101,8 @@ jobs:
       - name: Lint shell scripts
         run: make lint
 
-      - name: Build and test static kpm, kpm-index, kryx-src, and gports
-        run: ./scripts/build-kpm.sh --src _kpm --gports-src _gports --out build/bin --test
+      - name: Build and test static kpm (with integrated ports), kpm-index, and kryx-src
+        run: ./scripts/build-kpm.sh --src _kpm --out build/bin --test
 
       - name: Extract and customize KryX rootfs
         env:

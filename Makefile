@@ -11,17 +11,13 @@ WORK_DIR        ?= $(BUILD_DIR)/work
 BIN_DIR         ?= $(BUILD_DIR)/bin
 LOCAL_PKGS      ?= $(BUILD_DIR)/local-pkgs
 
-# --- Static Go tools (kpm, kpm-index, kryx-src, gports) ---
+# --- Static Go tools (kpm with integrated ports, kpm-index, kryx-src) ---
 KPM_SRC         ?=
 KPM_REPO        ?= https://github.com/kryx-linux/kpm.git
 KPM_REF         ?= main
 KPM_VERSION     ?=
-GPORTS_SRC      ?=
-GPORTS_REPO     ?= https://github.com/kryx-linux/gports.git
-GPORTS_REF      ?= main
 
 KPM_BIN         ?= $(if $(wildcard $(BIN_DIR)/kpm),$(BIN_DIR)/kpm,$(shell command -v kpm 2>/dev/null || echo /usr/bin/kpm))
-GPORTS_BIN      ?= $(if $(wildcard $(BIN_DIR)/gports),$(BIN_DIR)/gports,$(shell command -v gports 2>/dev/null || true))
 
 # --- Base container / RootFS tarball settings ---
 CRUX_ISO_URL    ?= https://git.crux.nu/system/iso/releases/download/$(CRUX_VERSION)-updated/crux-$(CRUX_VERSION)-updated.iso
@@ -63,15 +59,12 @@ QEMU_CPUS       ?= 2
 OVMF_CODE       ?= $(firstword $(wildcard /usr/share/edk2/ovmf/OVMF_CODE.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/ovmf/OVMF.fd))
 
 # --- Composed script flags ---
-KPM_FLAGS := --out "$(BIN_DIR)" --repo "$(KPM_REPO)" --ref "$(KPM_REF)" --gports-repo "$(GPORTS_REPO)" --gports-ref "$(GPORTS_REF)"
+KPM_FLAGS := --out "$(BIN_DIR)" --repo "$(KPM_REPO)" --ref "$(KPM_REF)"
 ifneq ($(strip $(KPM_SRC)),)
 KPM_FLAGS += --src "$(KPM_SRC)"
 endif
 ifneq ($(strip $(KPM_VERSION)),)
 KPM_FLAGS += --version "$(KPM_VERSION)"
-endif
-ifneq ($(strip $(GPORTS_SRC)),)
-KPM_FLAGS += --gports-src "$(GPORTS_SRC)"
 endif
 
 EXTRACT_FLAGS := --output "$(CONTAINER_ROOT)" --work-dir "$(WORK_DIR)" --kpm-bin "$(BIN_DIR)/kpm" --save-pkgs "$(LOCAL_PKGS)"
@@ -107,9 +100,6 @@ KERNEL_FLAGS += --src-tar "$(KERNEL_SRC_TAR)"
 endif
 
 ROOTFS_FLAGS := --build-dir "$(BUILD_DIR)" --kpm-bin "$(KPM_BIN)" --comp "$(SQUASHFS_COMP)"
-ifneq ($(strip $(GPORTS_BIN)),)
-ROOTFS_FLAGS += --gports-bin "$(GPORTS_BIN)"
-endif
 ifneq ($(strip $(LOCAL_PKGS)),)
 ifneq ($(wildcard $(LOCAL_PKGS)),)
 ROOTFS_FLAGS += --local-pkgs "$(LOCAL_PKGS)"
@@ -157,7 +147,7 @@ help:
 	@echo "  make verify-iso        Validate ISO El Torito boot records & SquashFS contents"
 	@echo ""
 	@echo "Container / RootFS Targets:"
-	@echo "  make kpm               Build static kpm, kpm-index, kryx-src, and gports"
+	@echo "  make kpm               Build static kpm (with integrated ports), kpm-index, and kryx-src"
 	@echo "  make container-rootfs  Extract & customize KryX base rootfs tarball ($(ROOTFS_TARBALL))"
 	@echo "  make docker            Build OCI container image ($(IMAGE_NAME):$(IMAGE_TAG))"
 	@echo "  make verify-image      Run container verification suite against $(IMAGE_NAME):$(IMAGE_TAG)"

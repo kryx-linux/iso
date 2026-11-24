@@ -54,7 +54,6 @@ efibootmgr
 grub2
 grub2-efi
 
-# KryX tools & crypto verification (core + rolling)
+# KryX tools & crypto verification (core + rolling; kpm provides integrated ports/pkgutils)
 signify
 kpm
-gports

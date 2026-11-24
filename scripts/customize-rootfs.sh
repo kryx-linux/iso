@@ -9,7 +9,6 @@ ROOTFS_DIR="${REPO_ROOT}/build/rootfs"
 KPM_BIN="${REPO_ROOT}/build/bin/kpm"
 KPM_INDEX_BIN="${REPO_ROOT}/build/bin/kpm-index"
 KRYX_SRC_BIN="${REPO_ROOT}/build/bin/kryx-src"
-GPORTS_BIN="${REPO_ROOT}/build/bin/gports"
 KPM_INI="${REPO_ROOT}/config/kpm.ini"
 PUBKEY_SRC="${REPO_ROOT}/config/keys/kryx-release.pub"
 SOURCES_LIST_SRC="${REPO_ROOT}/config/sources.list"
@@ -118,9 +117,8 @@ echo "[customize-rootfs] Customizing CRUX rootfs at ${ROOTFS_ABS}..."
 mkdir -p \
     "${ROOTFS_ABS}/etc" \
     "${ROOTFS_ABS}/etc/kpm/keys" \
-    "${ROOTFS_ABS}/etc/gports/sources.list.d" \
+    "${ROOTFS_ABS}/etc/ports/sources.list.d" \
     "${ROOTFS_ABS}/etc/profile.d" \
-    "${ROOTFS_ABS}/etc/ports" \
     "${ROOTFS_ABS}/etc/ssl/certs" \
     "${ROOTFS_ABS}/usr/bin" \
     "${ROOTFS_ABS}/usr/ports" \
@@ -137,14 +135,11 @@ mkdir -p \
 chmod 1777 "${ROOTFS_ABS}/tmp" "${ROOTFS_ABS}/var/tmp"
 chmod 0750 "${ROOTFS_ABS}/root"
 
-# 2. Install kpm, kpm-index, kryx-src, gports (if built), CRUX symlinks, release key, and configs.
+# 2. Install kpm (with integrated ports), kpm-index, kryx-src, CRUX symlinks, release key, and configs.
 install -m 0755 "$KPM_BIN" "${ROOTFS_ABS}/usr/bin/kpm"
 install -m 0755 "$KPM_INDEX_BIN" "${ROOTFS_ABS}/usr/bin/kpm-index"
 if [[ -f "$KRYX_SRC_BIN" ]]; then
     install -m 0755 "$KRYX_SRC_BIN" "${ROOTFS_ABS}/usr/bin/kryx-src"
-fi
-if [[ -f "$GPORTS_BIN" ]]; then
-    install -m 0755 "$GPORTS_BIN" "${ROOTFS_ABS}/usr/bin/gports"
 fi
 for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge; do
     ln -sf kpm "${ROOTFS_ABS}/usr/bin/${link}"
@@ -155,7 +150,7 @@ if [[ -f "$PUBKEY_SRC" ]]; then
     install -m 0644 "$PUBKEY_SRC" "${ROOTFS_ABS}/etc/kpm/keys/kryx-release.pub"
 fi
 if [[ -f "$SOURCES_LIST_SRC" ]]; then
-    install -m 0644 "$SOURCES_LIST_SRC" "${ROOTFS_ABS}/etc/gports/sources.list"
+    install -m 0644 "$SOURCES_LIST_SRC" "${ROOTFS_ABS}/etc/ports/sources.list"
 fi
 
 # 3. Verify CA certificates (/etc/ssl/cert.pem from CRUX ca-certificates) and add compatibility symlink.

@@ -168,9 +168,9 @@ for pkg in "${REQUIRED_PKGS[@]}"; do
         fi
     fi
 
-    # Skip source-building kpm/gports when static binaries are already staged in build/bin/
-    if [[ ( "$pkg" == "kpm" || "$pkg" == "gports" ) && -x "${REPO_ROOT}/build/bin/${pkg}" ]]; then
-        echo "  [static] ${pkg} (staged at build/bin/${pkg})"
+    # Skip source-building kpm when the static binary is already staged in build/bin/
+    if [[ "$pkg" == "kpm" && -x "${REPO_ROOT}/build/bin/kpm" ]]; then
+        echo "  [static] kpm (staged at build/bin/kpm)"
         continue
     fi
 
