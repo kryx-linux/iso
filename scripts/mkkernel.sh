@@ -117,7 +117,8 @@ cat > "${WRAP_DIR}/gcc" <<EOF
 for arg in "\$@"; do
     case "\$arg" in
         --version)
-            exec "${REAL_GCC}" "\$@" | sed -E '1s|\([^)]*\)|(${CC_BRAND})|; 1s|[[:space:]]+\([^)]*\)\$||'
+            "${REAL_GCC}" "\$@" | sed -E '1s|\([^)]*\)|(${CC_BRAND})|; 1s|[[:space:]]+\([^)]*\)\$||'
+            exit \$?
             ;;
     esac
 done
@@ -129,7 +130,8 @@ cat > "${WRAP_DIR}/ld" <<EOF
 for arg in "\$@"; do
     case "\$arg" in
         --version|-v)
-            exec "${REAL_LD}" "\$@" | sed -E '1s|\([^)]*\)|(${CC_BRAND})|'
+            "${REAL_LD}" "\$@" | sed -E '1s|\([^)]*\)|(${CC_BRAND})|'
+            exit \$?
             ;;
     esac
 done
@@ -137,8 +139,8 @@ exec "${REAL_LD}" "\$@"
 EOF
 
 chmod 0755 "${WRAP_DIR}/gcc" "${WRAP_DIR}/ld"
-CC_VER_LINE="$("${WRAP_DIR}/gcc" --version | head -n 1)"
-LD_VER_LINE="$("${WRAP_DIR}/ld" --version | head -n 1)"
+CC_VER_LINE="$("${WRAP_DIR}/gcc" --version | sed -n '1p')"
+LD_VER_LINE="$("${WRAP_DIR}/ld" --version | sed -n '1p')"
 echo "[mkkernel] Toolchain identity:"
 echo "  CC : ${CC_VER_LINE}"
 echo "  LD : ${LD_VER_LINE}"
