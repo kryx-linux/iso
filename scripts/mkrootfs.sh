@@ -307,9 +307,10 @@ if [[ -s "${ROOTFS_DIR}/etc/ssl/cert.pem" ]]; then
     ln -sf ../cert.pem "${ROOTFS_DIR}/etc/ssl/certs/ca-certificates.crt"
 fi
 
-# Ensure passwordless root login inside the live TTY environment.
+# Ensure passwordless, non-expired root login inside the live TTY environment
+# (CRUX filesystem ships `root::0::::::`, where sp_lstchg=0 forces PAM password change).
 if [[ -f "${ROOTFS_DIR}/etc/shadow" ]]; then
-    sed -i 's|^root:[^:]*:|root::|' "${ROOTFS_DIR}/etc/shadow"
+    sed -i 's|^root:.*|root::19999:0:99999:7:::|' "${ROOTFS_DIR}/etc/shadow"
 fi
 
 # Ensure /bin/sh exists (provided by core/dash; fall back to bash if absent).

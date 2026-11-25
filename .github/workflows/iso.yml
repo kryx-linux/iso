@@ -486,6 +486,9 @@ jobs:
                       if 'cannot execute "/etc/rc"' in text:
                           print("FAIL: /etc/rc failed to execute!\n" + text[-2000:])
                           break
+                      if "change your password" in text:
+                          print("FAIL: PAM forced password change on live autologin!\n" + text[-2000:])
+                          break
 
                       if not sent_cmds and ("KryX Linux Live ready." in text or "automatic login" in text) and ("# " in text[-200:] or "~#" in text[-200:] or "root@" in text[-200:]):
                           cmds = (
