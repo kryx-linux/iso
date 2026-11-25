@@ -312,6 +312,11 @@ if [[ -f "${ROOTFS_DIR}/etc/shadow" ]]; then
     sed -i 's|^root:[^:]*:|root::|' "${ROOTFS_DIR}/etc/shadow"
 fi
 
+# Ensure /bin/sh exists (provided by core/dash; fall back to bash if absent).
+if [[ ! -e "${ROOTFS_DIR}/bin/sh" && -x "${ROOTFS_DIR}/bin/bash" ]]; then
+    ln -sf bash "${ROOTFS_DIR}/bin/sh"
+fi
+
 # Refresh ldconfig cache inside rootfs if ldconfig is present on host.
 if command -v ldconfig >/dev/null 2>&1 && [[ -f "${ROOTFS_DIR}/etc/ld.so.conf" ]]; then
     ldconfig -r "$ROOTFS_DIR" 2>/dev/null || true
@@ -334,7 +339,14 @@ check_any_path() {
 }
 
 check_any_path "glibc (libc.so.6)"        lib/libc.so.6 lib64/libc.so.6 usr/lib/libc.so.6
+check_any_path "POSIX /bin/sh"            bin/sh usr/bin/sh
 check_any_path "bash"                     bin/bash usr/bin/bash
+check_any_path "login (shadow)"           bin/login usr/bin/login
+check_any_path "linux-pam (libpam.so.0)"  lib/libpam.so.0 usr/lib/libpam.so.0
+check_any_path "libbsd (libbsd.so.0)"     lib/libbsd.so.0 usr/lib/libbsd.so.0
+check_any_path "libmd (libmd.so.0)"       lib/libmd.so.0 usr/lib/libmd.so.0
+check_any_path "libgmp (libgmp.so.10)"    lib/libgmp.so.10 usr/lib/libgmp.so.10
+check_any_path "libdevmapper"             lib/libdevmapper.so.1.02 usr/lib/libdevmapper.so.1.02
 check_any_path "sysvinit (/sbin/init)"    sbin/init usr/sbin/init
 check_any_path "agetty"                   sbin/agetty usr/sbin/agetty
 check_any_path "mount (util-linux)"       bin/mount usr/bin/mount

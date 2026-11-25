@@ -136,7 +136,7 @@ INITRD_FLAGS += --busybox "$(BUSYBOX_BIN)"
 endif
 
 .PHONY: help all all-container kpm container-rootfs docker verify-image \
-        kernel kernel-clean kernel-distclean essential-pkgs rootfs initramfs iso verify-iso \
+        kernel kernel-clean kernel-distclean busybox essential-pkgs rootfs initramfs iso verify-iso \
         lint qemu qemu-uefi qemu-serial clean
 
 help:
@@ -197,6 +197,9 @@ verify-image:
 kernel:
 	./scripts/mkkernel.sh $(KERNEL_FLAGS)
 
+busybox:
+	./scripts/mkbusybox.sh --build-dir "$(BUILD_DIR)" --out "$(BIN_DIR)/busybox" --jobs "$(KERNEL_JOBS)"
+
 kernel-clean:
 	rm -rf "$(BUILD_DIR)/kernel-stage" "$(BUILD_DIR)/kernel-src/linux-$(KERNEL_VERSION)"
 
@@ -226,6 +229,7 @@ lint:
 		scripts/verify-image.sh \
 		scripts/build-essential-pkgs.sh \
 		scripts/mkkernel.sh \
+		scripts/mkbusybox.sh \
 		scripts/mkrootfs.sh \
 		scripts/mkinitramfs.sh \
 		scripts/mkiso.sh \

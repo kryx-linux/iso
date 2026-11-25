@@ -12,10 +12,24 @@ zstd
 attr
 acl
 libcap
+libcap-ng
 libxcrypt
 libpcre2
+libgmp
+libmpfr
+libmd
+libbsd
+linux-pam
+expat
+db
+elfutils
+libtirpc
+sqlite3
+file
+libdevmapper
 ncurses
 readline
+dash
 bash
 coreutils
 eudev
@@ -49,6 +63,8 @@ wireless-tools
 wpa_supplicant
 
 # Bootloader tools for target install (opt)
+libpng
+freetype
 efivar
 efibootmgr
 grub2

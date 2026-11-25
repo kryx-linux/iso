@@ -296,18 +296,35 @@ jobs:
               --jobs "$(nproc)" \
               --force
 
-          sudo chown -R "$(id -u):$(id -g)" build/kernel-stage
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            kryx-linux/iso:kernel-builder \
+            /work/scripts/mkbusybox.sh \
+              --build-dir /work/build \
+              --out /work/build/busybox-stage/busybox \
+              --jobs "$(nproc)" \
+              --force
+
+          sudo chown -R "$(id -u):$(id -g)" build/kernel-stage build/busybox-stage
 
       - name: Pack staged KryX kernel artifact
         run: |
           tar -cf build/kernel-stage.tar -C build/kernel-stage .
-          ls -lh build/kernel-stage.tar
+          ls -lh build/kernel-stage.tar build/busybox-stage/busybox
 
       - name: Upload kernel stage artifact
         uses: actions/upload-artifact@v4
         with:
           name: kryx-kernel-stage
           path: build/kernel-stage.tar
+          retention-days: 1
+
+      - name: Upload KryX baseline x86-64 static busybox artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryx-busybox
+          path: build/busybox-stage/busybox
           retention-days: 1
 
   build-iso:
@@ -336,17 +353,25 @@ jobs:
           name: kryx-kernel-stage
           path: artifacts/kryx-kernel-stage
 
-      - name: Install ISO & GRUB BIOS+UEFI build tools
+      - name: Download KryX baseline x86-64 static busybox
+        uses: actions/download-artifact@v4
+        with:
+          name: kryx-busybox
+          path: artifacts/kryx-busybox
+
+      - name: Install ISO, GRUB BIOS+UEFI, and QEMU boot-test tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            busybox-static \
+            binutils \
             cpio \
             grub-common \
             grub-efi-amd64-bin \
             grub-pc-bin \
             gzip \
             mtools \
+            ovmf \
+            qemu-system-x86 \
             squashfs-tools \
             xorriso \
             zstd
@@ -355,6 +380,7 @@ jobs:
         run: |
           mkdir -p build/bin build/local-pkgs build/kernel-stage
           cp -a artifacts/kryx-base-artifacts/bin/. build/bin/
+          install -m 0755 artifacts/kryx-busybox/busybox build/bin/busybox
           chmod +x build/bin/*
           tar -xf artifacts/kryx-essential-pkgs/local-pkgs.tar -C build/local-pkgs
           tar -xf artifacts/kryx-kernel-stage/kernel-stage.tar -C build/kernel-stage
@@ -368,7 +394,7 @@ jobs:
 
           sudo ./scripts/mkinitramfs.sh \
             --build-dir build \
-            --busybox /bin/busybox \
+            --busybox build/bin/busybox \
             --comp gzip
 
           sudo ./scripts/mkiso.sh \
@@ -377,8 +403,124 @@ jobs:
 
           sudo chown "$(id -u):$(id -g)" kryx-linux-x86_64.iso kryx-linux-x86_64.iso.sha256
 
-      - name: Verify built ISO structure and SquashFS rootfs
+      - name: Verify built ISO structure, shared libs, and busybox ISA
         run: ./scripts/verify-iso.sh kryx-linux-x86_64.iso
+
+      - name: Smoke-test live ISO boot in QEMU (baseline qemu64 BIOS)
+        run: |
+          python3 - <<'PY'
+          import os, pty, select, socket, subprocess, sys, time
+
+          iso = "kryx-linux-x86_64.iso"
+          mon_sock = "/tmp/qemu-mon.sock"
+          if os.path.exists(mon_sock):
+              os.unlink(mon_sock)
+
+          master_fd, slave_fd = pty.openpty()
+          cmd = [
+              "qemu-system-x86_64",
+              "-cpu", "qemu64",
+              "-m", "1024",
+              "-smp", "2",
+              "-cdrom", iso,
+              "-boot", "d",
+              "-display", "none",
+              "-serial", "stdio",
+              "-monitor", f"unix:{mon_sock},server,nowait",
+              "-no-reboot",
+          ]
+          if os.access("/dev/kvm", os.R_OK | os.W_OK):
+              cmd.insert(1, "-enable-kvm")
+
+          proc = subprocess.Popen(cmd, stdin=slave_fd, stdout=slave_fd, stderr=subprocess.PIPE, close_fds=True)
+          os.close(slave_fd)
+
+          def send_mon(line):
+              with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                  s.settimeout(2)
+                  s.connect(mon_sock)
+                  time.sleep(0.05)
+                  try: s.recv(4096)
+                  except Exception: pass
+                  s.sendall((line + "\n").encode())
+                  time.sleep(0.1)
+                  try: s.recv(4096)
+                  except Exception: pass
+
+          buf = b""
+          start = time.time()
+          sent_grub = False
+          sent_cmds = False
+          passed = False
+          grub_wait = 3.0 if "-enable-kvm" in cmd else 6.0
+          timeout = 90 if "-enable-kvm" in cmd else 180
+
+          try:
+              while time.time() - start < timeout:
+                  elapsed = time.time() - start
+                  if not sent_grub and elapsed >= grub_wait and os.path.exists(mon_sock):
+                      send_mon("sendkey down")
+                      time.sleep(0.25)
+                      send_mon("sendkey down")
+                      time.sleep(0.25)
+                      send_mon("sendkey ret")
+                      sent_grub = True
+
+                  r, _, _ = select.select([master_fd], [], [], 0.2)
+                  if r:
+                      try:
+                          chunk = os.read(master_fd, 4096)
+                      except OSError:
+                          break
+                      if not chunk:
+                          break
+                      buf += chunk
+                      text = buf.decode("utf-8", errors="replace")
+
+                      if "Kernel panic" in text:
+                          print("FAIL: Kernel panic detected!\n" + text[-2000:])
+                          break
+                      if "error while loading shared libraries" in text:
+                          print("FAIL: Missing shared library during boot!\n" + text[-2000:])
+                          break
+                      if 'cannot execute "/etc/rc"' in text:
+                          print("FAIL: /etc/rc failed to execute!\n" + text[-2000:])
+                          break
+
+                      if not sent_cmds and ("KryX Linux Live ready." in text or "automatic login" in text) and ("# " in text[-200:] or "~#" in text[-200:] or "root@" in text[-200:]):
+                          cmds = (
+                              "echo ===KRYX_BOOT_OK===\n"
+                              "uname -a\n"
+                              "cat /proc/version\n"
+                              "kpm --version\n"
+                              "ports --version\n"
+                              "echo ===KRYX_BOOT_DONE===\n"
+                              "poweroff -f || halt -f\n"
+                          )
+                          os.write(master_fd, cmds.encode())
+                          sent_cmds = True
+
+                      if "===KRYX_BOOT_DONE===" in text:
+                          passed = True
+                          time.sleep(1.0)
+                          break
+                  if proc.poll() is not None:
+                      break
+          finally:
+              proc.terminate()
+              try: proc.wait(timeout=3)
+              except subprocess.TimeoutExpired: proc.kill()
+              os.close(master_fd)
+
+          text = buf.decode("utf-8", errors="replace")
+          print(text[-3000:])
+          if not passed:
+              sys.exit(1)
+          if "KryX-x86_64" not in text or "6.18.63-kryx" not in text:
+              print("FAIL: expected KryX-x86_64 and 6.18.63-kryx in boot output")
+              sys.exit(1)
+          print("PASS: KryX live ISO booted cleanly on baseline qemu64!")
+          PY
 
       - name: Prepare release checksums
         run: |
