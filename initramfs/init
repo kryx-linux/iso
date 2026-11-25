@@ -150,8 +150,10 @@ else
     umount "$MEDIAMNT" 2>/dev/null || true
 fi
 
-# Preserve /run/live mount visibility inside the live rootfs
-mkdir -p /newroot/run/live /newroot/dev /newroot/proc /newroot/sys
+# Preserve /run/live mount visibility inside the live rootfs by mounting /newroot/run
+# as tmpfs first so /etc/rc sees /run as a mountpoint and never shadows /run/live/media.
+mkdir -p /newroot/run /newroot/dev /newroot/proc /newroot/sys
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newroot/run 2>/dev/null || true
 if mountpoint -q "$MEDIAMNT" 2>/dev/null; then
     mkdir -p /newroot/run/live/media /newroot/run/live/ro /newroot/run/live/rw
     mount --move "$MEDIAMNT" /newroot/run/live/media 2>/dev/null || true

@@ -428,6 +428,7 @@ jobs:
               "-drive", f"file={disk},format=raw,if=virtio",
               "-cdrom", iso,
               "-boot", "d",
+              "-nic", "none",
               "-display", "none",
               "-serial", "stdio",
               "-monitor", f"unix:{mon_sock},server,nowait",
@@ -496,23 +497,23 @@ jobs:
 
                       if not sent_cmds and ("KryX Linux Live ready." in text or "automatic login" in text) and ("# " in text[-200:] or "~#" in text[-200:] or "root@" in text[-200:]):
                           cmds = (
-                              "echo ===KRYX_BOOT_OK===\n"
+                              "set -e\n"
                               "uname -a\n"
                               "cat /proc/version\n"
                               "kpm --version\n"
                               "ports --version\n"
                               "command -v dialog iwctl setup-kryx\n"
-                              "ls -la /run/live/media/pool/packages.list\n"
+                              "test -f /run/live/media/pool/packages.list && echo 'POOL''_OK'\n"
                               "mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
                               "setup --offline --root /mnt --profile minimal -y\n"
-                              "setup-chroot /mnt /bin/sh -c 'echo ===CHROOT_OK=== && kpm --version && ls /boot/vmlinuz*'\n"
-                              "echo ===KRYX_BOOT_DONE===\n"
+                              "setup-chroot /mnt /bin/sh -c 'kpm --version && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
+                              "echo 'KRYX_BOOT''_DONE'\n"
                               "poweroff -f || halt -f\n"
                           )
                           os.write(master_fd, cmds.encode())
                           sent_cmds = True
 
-                      if "===KRYX_BOOT_DONE===" in text:
+                      if "KRYX_BOOT_DONE" in text:
                           passed = True
                           time.sleep(1.0)
                           break
@@ -530,11 +531,11 @@ jobs:
           print(text[-4000:])
           if not passed:
               sys.exit(1)
-          for marker in ("KryX-x86_64", "6.18.63-kryx", "===CHROOT_OK==="):
+          for marker in ("KryX-x86_64", "6.18.63-kryx", "POOL_OK", "CHROOT_OK"):
               if marker not in text:
                   print(f"FAIL: expected {marker!r} in boot/install output")
                   sys.exit(1)
-          print("PASS: KryX live ISO booted, installed offline from /pool/, and entered setup-chroot cleanly on qemu64!")
+          print("PASS: KryX live ISO booted, verified /run/live/media/pool, installed 100% offline (-nic none), and entered setup-chroot cleanly on qemu64!")
           PY
 
       - name: Prepare release checksums

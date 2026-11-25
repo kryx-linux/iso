@@ -204,8 +204,15 @@ if [[ -n "$POOL_DIR" && -d "$POOL_DIR" ]]; then
     if [[ "${#POOL_SELECTED[@]}" -gt 0 ]]; then
         echo "[setup] Installing ${#POOL_SELECTED[@]} base package(s) offline from ${POOL_DIR}..."
         "$KPM_BIN" --config "$TMP_KPM_INI" --root="$TARGET_ROOT" install --reinstall --force "${POOL_SELECTED[@]}"
+    else
+        echo "setup: error: local pool ${POOL_DIR} contained no matching .pkg.tar.* archives" >&2
+        exit 1
     fi
 else
+    if [[ "$OFFLINE" -eq 1 ]]; then
+        echo "setup: error: --offline requested but ISO package pool was not found at /run/live/media/pool" >&2
+        exit 1
+    fi
     REMOTE_NEEDED=("${PKGS[@]}")
 fi
 

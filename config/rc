@@ -21,7 +21,9 @@ elif command -v hostname >/dev/null 2>&1; then
 fi
 
 mountpoint -q /dev/pts || mount -t devpts -o gid=5,mode=620 devpts /dev/pts
-mountpoint -q /run     || mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+if ! mountpoint -q /run && ! mountpoint -q /run/live/media; then
+    mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+fi
 
 # Mount efivarfs on UEFI systems so grub-install can write NVRAM boot entries
 if [ -d /sys/firmware/efi/efivars ]; then
