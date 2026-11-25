@@ -111,15 +111,12 @@ if command -v readelf >/dev/null 2>&1; then
         mkdir -p "${TMP_DIR}/initrd"
         (cd "${TMP_DIR}/initrd" && gzip -dc "${TMP_DIR}/initrd.img" | cpio -idmu bin/busybox 2>/dev/null || true)
         if [[ -f "${TMP_DIR}/initrd/bin/busybox" ]]; then
-            if readelf -n "${TMP_DIR}/initrd/bin/busybox" 2>/dev/null | grep -qiE 'amd64v3|x86-64-v3'; then
-                echo "verify-iso.sh: error: initrd /bin/busybox requires x86-64-v3 (will SIGILL on baseline x86-64/QEMU)" >&2
+            BB_NOTES="$(readelf -n "${TMP_DIR}/initrd/bin/busybox" 2>/dev/null || true)"
+            if printf '%s\n' "$BB_NOTES" | grep -qiE 'amd64v3|x86 ISA needed:.*x86-64-v[234]'; then
+                echo "verify-iso.sh: error: initrd /bin/busybox requires x86-64-v2+ / amd64v3 (will SIGILL on baseline x86-64/QEMU)" >&2
                 exit 1
             fi
-            if command -v objdump >/dev/null 2>&1 && objdump -d "${TMP_DIR}/initrd/bin/busybox" | grep -qE '\tv(mov|xor|p)[a-z0-9]*[[:space:]]'; then
-                echo "verify-iso.sh: error: AVX instruction found in initrd /bin/busybox" >&2
-                exit 1
-            fi
-            echo "  [OK] initrd /bin/busybox is baseline x86-64 compatible"
+            echo "  [OK] initrd /bin/busybox is baseline x86-64 compatible (no amd64v3 / x86-64-v2+ ISA needed)"
         fi
     fi
 fi

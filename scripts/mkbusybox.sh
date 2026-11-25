@@ -116,7 +116,8 @@ make -C "$BB_SRC" -j"$JOBS" \
 install -m 0755 "${BB_SRC}/busybox" "$OUT_ABS"
 strip --strip-all "$OUT_ABS" 2>/dev/null || true
 
-# Verify static linkage and absence of AVX/amd64v3 instructions.
+# Verify static linkage and baseline x86-64 ISA requirement (glibc IFUNCs may list
+# x86-64-v3 under "ISA used", which is CPUID-gated; only "ISA needed" must stay baseline).
 if command -v ldd >/dev/null 2>&1; then
     LDD_OUT="$(ldd "$OUT_ABS" 2>&1 || true)"
     if ! printf '%s\n' "$LDD_OUT" | grep -qE 'not a dynamic executable|statically linked'; then
@@ -125,9 +126,10 @@ if command -v ldd >/dev/null 2>&1; then
     fi
 fi
 
-if command -v objdump >/dev/null 2>&1; then
-    if objdump -d "$OUT_ABS" | grep -qE '\tv(mov|xor|p)[a-z0-9]*[[:space:]]'; then
-        echo "mkbusybox.sh: error: AVX instruction detected in ${OUT_ABS} (must be baseline x86-64)" >&2
+if command -v readelf >/dev/null 2>&1; then
+    BB_NOTES="$(readelf -n "$OUT_ABS" 2>/dev/null || true)"
+    if printf '%s\n' "$BB_NOTES" | grep -qiE 'amd64v3|x86 ISA needed:.*x86-64-v[234]'; then
+        echo "mkbusybox.sh: error: built busybox requires x86-64-v2+ ISA: ${BB_NOTES}" >&2
         exit 1
     fi
 fi
