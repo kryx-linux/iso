@@ -504,18 +504,30 @@ jobs:
                               "ports --version\n"
                               "command -v dialog iwctl setup-kryx\n"
                               "test -f /run/live/media/pool/packages.list && echo 'POOL''_OK'\n"
+                              "iwctl device list >/dev/null 2>&1 && echo 'IWD''_OK' || (cat /var/log/iwd.log /var/log/dbus.log 2>/dev/null; false)\n"
                               "mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
                               "setup --offline --root /mnt --profile minimal -y\n"
                               "setup-chroot /mnt /bin/sh -c 'kpm --version && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
                               "echo 'KRYX_BOOT''_DONE'\n"
-                              "poweroff -f || halt -f\n"
+                              "poweroff\n"
                           )
                           os.write(master_fd, cmds.encode())
                           sent_cmds = True
 
                       if "KRYX_BOOT_DONE" in text:
-                          passed = True
-                          time.sleep(1.0)
+                          # Drain serial output while waiting up to 20s for /etc/rc.shutdown to cleanly power off QEMU!
+                          shut_end = time.time() + 20
+                          while time.time() < shut_end and proc.poll() is None:
+                              rr, _, _ = select.select([master_fd], [], [], 0.2)
+                              if rr:
+                                  try:
+                                      c = os.read(master_fd, 4096)
+                                      if c: buf += c
+                                  except OSError:
+                                      break
+                          passed = (proc.poll() is not None)
+                          if not passed:
+                              print("FAIL: clean poweroff via /etc/rc.shutdown hung!")
                           break
                   if proc.poll() is not None:
                       break
@@ -531,11 +543,14 @@ jobs:
           print(text[-4000:])
           if not passed:
               sys.exit(1)
-          for marker in ("KryX-x86_64", "6.18.63-kryx", "POOL_OK", "CHROOT_OK"):
+          for marker in ("KryX-x86_64", "6.18.63-kryx", "POOL_OK", "IWD_OK", "CHROOT_OK"):
               if marker not in text:
                   print(f"FAIL: expected {marker!r} in boot/install output")
                   sys.exit(1)
-          print("PASS: KryX live ISO booted, verified /run/live/media/pool, installed 100% offline (-nic none), and entered setup-chroot cleanly on qemu64!")
+          if "no more processes left in this runlevel" in text:
+              print("FAIL: SysVinit shutdown hung without invoking halt/reboot!")
+              sys.exit(1)
+          print("PASS: KryX live ISO booted, verified iwd/D-Bus + /run/live/media/pool, installed offline, entered chroot, and powered off cleanly!")
           PY
 
       - name: Prepare release checksums

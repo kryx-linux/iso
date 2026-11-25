@@ -1,5 +1,6 @@
 # KryX Linux live ISO Kconfig fragment applied on top of our adapted kernel config
-# (kernel/linux-6.18.63.config) for KryX identity + live SquashFS/OverlayFS boot.
+# (kernel/linux-6.18.63.config) for KryX identity, live SquashFS/OverlayFS boot,
+# and full bare-metal Wi-Fi / iwd crypto support.
 CONFIG_LOCALVERSION="-kryx"
 CONFIG_DEFAULT_HOSTNAME="kryx"
 CONFIG_SQUASHFS=m
@@ -10,3 +11,23 @@ CONFIG_SQUASHFS_ZSTD=y
 CONFIG_OVERLAY_FS=m
 CONFIG_BLK_DEV_LOOP=m
 CONFIG_EFI_STUB=y
+
+# Mandatory kernel crypto & key-management APIs required by iwd (WPA2/WPA3/SAE/EAP)
+CONFIG_CRYPTO_USER_API=y
+CONFIG_CRYPTO_USER_API_HASH=y
+CONFIG_CRYPTO_USER_API_SKCIPHER=y
+CONFIG_CRYPTO_USER_API_AEAD=y
+CONFIG_CRYPTO_AES=y
+CONFIG_CRYPTO_CBC=y
+CONFIG_CRYPTO_ECB=y
+CONFIG_CRYPTO_HMAC=y
+CONFIG_CRYPTO_CMAC=y
+CONFIG_CRYPTO_SHA1=y
+CONFIG_CRYPTO_SHA256=y
+CONFIG_CRYPTO_SHA512=y
+CONFIG_CRYPTO_MD4=y
+CONFIG_CRYPTO_MD5=y
+CONFIG_CRYPTO_DES=y
+CONFIG_KEY_DH_OPERATIONS=y
+CONFIG_PKCS8_PRIVATE_KEY_PARSER=y
+CONFIG_RFKILL=y

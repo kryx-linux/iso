@@ -237,7 +237,7 @@ lint:
 		bin/setup \
 		bin/setup-kryx \
 		bin/setup-chroot
-	sh -n initramfs/init config/rc config/rc.shutdown
+	sh -n initramfs/init config/rc config/rc.shutdown config/serial-getty
 
 qemu:
 	qemu-system-x86_64 -enable-kvm -m $(QEMU_MEM) -smp $(QEMU_CPUS) -cdrom "$(ISO_OUT)" -boot d

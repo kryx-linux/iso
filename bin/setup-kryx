@@ -182,13 +182,38 @@ ui_menu() {
     fi
 }
 
-# --- Helper: Optional Wi-Fi setup via iwctl ---
+# --- Helper: Optional Wi-Fi setup via iwd (with automatic wpa_supplicant fallback) ---
+
+ensure_iwd_ready() {
+    command -v iwctl >/dev/null 2>&1 || return 1
+    if [[ ! -S /run/dbus/system_bus_socket && -x /usr/sbin/dbus-daemon ]]; then
+        mkdir -p /run/dbus /var/lib/dbus
+        chmod 0755 /run/dbus
+        rm -f /run/dbus/pid /run/dbus/system_bus_socket
+        [[ -x /usr/bin/dbus-uuidgen ]] && /usr/bin/dbus-uuidgen --ensure 2>/dev/null || true
+        /usr/sbin/dbus-daemon --system --fork 2>>/var/log/dbus.log || true
+        sleep 1
+    fi
+    [[ -S /run/dbus/system_bus_socket ]] || return 1
+    if ! iwctl device list >/dev/null 2>&1; then
+        if [[ -x /usr/sbin/iwd ]]; then
+            mkdir -p /run/iwd /var/lib/iwd /etc/iwd
+            chmod 0700 /var/lib/iwd /etc/iwd
+            /usr/sbin/iwd >>/var/log/iwd.log 2>&1 &
+            local i=0
+            while [[ "$i" -lt 20 ]]; do
+                iwctl device list >/dev/null 2>&1 && return 0
+                sleep 0.2
+                i=$((i + 1))
+            done
+        fi
+        return 1
+    fi
+    return 0
+}
 
 configure_wifi() {
-    if ! command -v iwctl >/dev/null 2>&1; then
-        ui_msg "Wi-Fi Unavailable" "iwctl (iwd) is not installed on this image. Configure Wi-Fi manually with wpa_supplicant or use offline install."
-        return 0
-    fi
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock wifi 2>/dev/null || true
 
     local wlan=""
     for p in /sys/class/net/*; do
@@ -201,8 +226,13 @@ configure_wifi() {
         return 0
     fi
 
-    iwctl station "$wlan" scan 2>/dev/null || true
-    sleep 2
+    local use_iwd=0
+    if ensure_iwd_ready; then
+        use_iwd=1
+        iwctl station "$wlan" scan 2>/dev/null || true
+        sleep 2
+    fi
+
     local ssid psk
     ssid="$(ui_input "Wi-Fi Network (${wlan})" "Enter your Wi-Fi SSID (leave blank to skip):" "")" || return 0
     [[ -z "$ssid" ]] && return 0
@@ -210,14 +240,37 @@ configure_wifi() {
 
     clear 2>/dev/null || true
     echo "[setup-kryx] Connecting ${wlan} to '${ssid}'..."
-    if [[ -n "$psk" ]]; then
-        iwctl --passphrase "$psk" station "$wlan" connect "$ssid" || true
+    if [[ "$use_iwd" -eq 1 ]]; then
+        if [[ -n "$psk" ]]; then
+            iwctl --passphrase "$psk" station "$wlan" connect "$ssid" || true
+        else
+            iwctl station "$wlan" connect "$ssid" || true
+        fi
+    elif command -v wpa_supplicant >/dev/null 2>&1; then
+        echo "[setup-kryx] iwd unavailable; falling back to wpa_supplicant (see /var/log/iwd.log)..."
+        ip link set "$wlan" up 2>/dev/null || true
+        mkdir -p /run/wpa_supplicant /etc/wpa_supplicant
+        local wpa_conf="/etc/wpa_supplicant/wpa_supplicant-${wlan}.conf"
+        if [[ -n "$psk" ]] && command -v wpa_passphrase >/dev/null 2>&1; then
+            wpa_passphrase "$ssid" "$psk" > "$wpa_conf"
+        else
+            cat > "$wpa_conf" <<EOF
+network={
+    ssid="${ssid}"
+    key_mgmt=NONE
+}
+EOF
+        fi
+        chmod 0600 "$wpa_conf"
+        killall wpa_supplicant 2>/dev/null || true
+        wpa_supplicant -B -i "$wlan" -c "$wpa_conf" || true
     else
-        iwctl station "$wlan" connect "$ssid" || true
+        echo "[setup-kryx] Neither iwd nor wpa_supplicant available." >&2
     fi
+
     sleep 3
     if command -v dhcpcd >/dev/null 2>&1; then
-        dhcpcd -q -t 10 "$wlan" 2>/dev/null || true
+        dhcpcd -q -t 15 "$wlan" 2>/dev/null || true
     fi
     ui_msg "Wi-Fi Status" "Current IP addresses on ${wlan}:\n\n$(ip -brief addr show "$wlan" 2>/dev/null || echo 'no IP yet')"
 }

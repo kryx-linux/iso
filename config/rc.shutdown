@@ -1,15 +1,52 @@
 #!/bin/sh
-# /etc/rc.shutdown - KryX Linux minimal live shutdown script
+# /etc/rc.shutdown - KryX Linux minimal live shutdown/reboot script.
+# Invoked by SysVinit for runlevel 0 (halt/poweroff) and runlevel 6 (reboot).
+# Must terminate with `/sbin/halt -d -f -i -p` or `/sbin/reboot -d -f -i` so the
+# kernel executes driver ->shutdown() callbacks and a clean ACPI/EFI reset/S5.
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 export PATH
 
-echo "KryX Linux Live — shutting down..."
+ACTION="${1:-}"
+if [ -z "$ACTION" ]; then
+    RL="$(runlevel 2>/dev/null | awk '{print $2}' || true)"
+    if [ "$RL" = "6" ]; then
+        ACTION="reboot"
+    else
+        ACTION="halt"
+    fi
+fi
 
+echo "KryX Linux Live — shutting down (${ACTION})..."
+
+# Gracefully stop live daemons so Wi-Fi/D-Bus/udev release hardware cleanly
+for pidfile in /run/iwd.pid /run/dhcpcd.pid /run/dbus/pid; do
+    if [ -r "$pidfile" ]; then
+        kill "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null || true
+    fi
+done
+killall -TERM iwd wpa_supplicant dhcpcd dbus-daemon 2>/dev/null || true
+[ -x /sbin/udevadm ] && /sbin/udevadm control --exit 2>/dev/null || true
+sleep 1
+
+# Terminate remaining user processes cleanly
 killall5 -15 2>/dev/null || true
 sleep 1
 killall5 -9 2>/dev/null || true
 
+# Flush buffers and cleanly unmount efivarfs + non-virtual filesystems
 sync
-umount -a -r -t nosysfs,noproc,nodevtmpfs,notmpfs 2>/dev/null || true
+if mountpoint -q /sys/firmware/efi/efivars 2>/dev/null; then
+    umount /sys/firmware/efi/efivars 2>/dev/null || true
+fi
+umount -a -r -t nosysfs,noproc,nodevtmpfs,notmpfs,nooverlay,nosquashfs 2>/dev/null || true
 sync
+
+# Hand off directly to the kernel's reboot(2) syscall for clean PCI/ACPI/EFI reset or power-off
+if [ "$ACTION" = "reboot" ]; then
+    echo "KryX Linux Live — rebooting..."
+    exec /sbin/reboot -d -f -i
+else
+    echo "KryX Linux Live — powering off..."
+    exec /sbin/halt -d -f -i -p
+fi

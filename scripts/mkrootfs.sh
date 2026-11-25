@@ -283,9 +283,10 @@ install -m 0755 "${REPO_ROOT}/bin/setup-kryx"   "${ROOTFS_DIR}/usr/bin/setup-kry
 install -m 0755 "${REPO_ROOT}/bin/setup-chroot" "${ROOTFS_DIR}/usr/bin/setup-chroot"
 
 # 5. Install minimal live system configs (/etc/inittab, /etc/rc, /etc/issue, /etc/motd, etc.).
-install -m 0644 "${REPO_ROOT}/config/inittab"     "${ROOTFS_DIR}/etc/inittab"
-install -m 0755 "${REPO_ROOT}/config/rc"          "${ROOTFS_DIR}/etc/rc"
-install -m 0755 "${REPO_ROOT}/config/rc.shutdown" "${ROOTFS_DIR}/etc/rc.shutdown"
+install -m 0644 "${REPO_ROOT}/config/inittab"      "${ROOTFS_DIR}/etc/inittab"
+install -m 0755 "${REPO_ROOT}/config/serial-getty" "${ROOTFS_DIR}/sbin/serial-getty"
+install -m 0755 "${REPO_ROOT}/config/rc"           "${ROOTFS_DIR}/etc/rc"
+install -m 0755 "${REPO_ROOT}/config/rc.shutdown"  "${ROOTFS_DIR}/etc/rc.shutdown"
 install -m 0644 "${REPO_ROOT}/config/fstab"       "${ROOTFS_DIR}/etc/fstab"
 install -m 0644 "${REPO_ROOT}/config/issue"       "${ROOTFS_DIR}/etc/issue"
 install -m 0644 "${REPO_ROOT}/config/motd"        "${ROOTFS_DIR}/etc/motd"

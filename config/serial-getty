@@ -1,0 +1,11 @@
+#!/bin/sh
+# /sbin/serial-getty - Only attach agetty to ttyS0 when explicitly requested via
+# kernel cmdline (e.g. QEMU serial console), avoiding respawn loops on laptops
+# without a physical RS-232 UART.
+
+if grep -q 'console=ttyS0' /proc/cmdline 2>/dev/null && [ -c /dev/ttyS0 ]; then
+    exec /sbin/agetty --autologin root -L 115200 ttyS0 vt100
+fi
+
+# Stay alive silently so SysVinit never respawns or logs "respawning too fast".
+exec sleep 86400
