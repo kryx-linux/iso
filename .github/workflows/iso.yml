@@ -497,22 +497,26 @@ jobs:
 
                       if not sent_cmds and ("KryX Linux Live ready." in text or "automatic login" in text) and ("# " in text[-200:] or "~#" in text[-200:] or "root@" in text[-200:]):
                           cmds = (
-                              "set -e\n"
-                              "uname -a\n"
-                              "cat /proc/version\n"
-                              "kpm --version\n"
-                              "ports --version\n"
-                              "command -v dialog iwctl setup-kryx\n"
-                              "test -f /run/live/media/pool/packages.list && echo 'POOL''_OK'\n"
-                              "iwctl device list >/dev/null 2>&1 && echo 'IWD''_OK' || (cat /var/log/iwd.log /var/log/dbus.log 2>/dev/null; false)\n"
-                              "mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
-                              "setup --offline --root /mnt --profile minimal -y\n"
-                              "setup-chroot /mnt /bin/sh -c 'kpm --version && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
-                              "echo 'KRYX_BOOT''_DONE'\n"
-                              "poweroff\n"
+                              "( set -e\n"
+                              "  uname -a\n"
+                              "  cat /proc/version\n"
+                              "  kpm --version\n"
+                              "  ports --version\n"
+                              "  command -v dialog iwctl setup-kryx\n"
+                              "  test -f /run/live/media/pool/packages.list && echo 'POOL''_OK'\n"
+                              "  iwctl device list >/dev/null 2>&1 && echo 'IWD''_OK' || (cat /var/log/iwd.log /var/log/dbus.log 2>/dev/null; false)\n"
+                              "  mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
+                              "  setup --offline --root /mnt --profile minimal -y\n"
+                              "  setup-chroot /mnt /bin/sh -c 'kpm --version && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
+                              "  echo 'KRYX_BOOT''_DONE'\n"
+                              ") && poweroff || echo 'KRYX_SMOKE''_FAILED'\n"
                           )
                           os.write(master_fd, cmds.encode())
                           sent_cmds = True
+
+                      if "KRYX_SMOKE_FAILED" in text:
+                          print("FAIL: Guest smoke test command failed!")
+                          break
 
                       if "KRYX_BOOT_DONE" in text:
                           # Drain serial output while waiting up to 20s for /etc/rc.shutdown to cleanly power off QEMU!

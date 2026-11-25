@@ -201,6 +201,7 @@ if [[ -n "$POOL_DIR" && -d "$POOL_DIR" ]]; then
             REMOTE_NEEDED+=("$p")
         fi
     done
+    shopt -u nullglob
     if [[ "${#POOL_SELECTED[@]}" -gt 0 ]]; then
         echo "[setup] Installing ${#POOL_SELECTED[@]} base package(s) offline from ${POOL_DIR}..."
         "$KPM_BIN" --config "$TMP_KPM_INI" --root="$TARGET_ROOT" install --reinstall --force "${POOL_SELECTED[@]}"
@@ -267,24 +268,33 @@ fi
 ln -sf /etc/kpm.ini "${ROOT_PREFIX}/etc/kpm/kpm.ini"
 
 # Copy saved Wi-Fi networks from live environment (iwd) into target rootfs if present.
-if [[ -d /var/lib/iwd ]] && ls /var/lib/iwd/*.psk >/dev/null 2>&1; then
-    mkdir -p "${ROOT_PREFIX}/var/lib/iwd"
-    chmod 0700 "${ROOT_PREFIX}/var/lib/iwd"
-    cp -a /var/lib/iwd/*.psk "${ROOT_PREFIX}/var/lib/iwd/"
+if [[ -d /var/lib/iwd ]]; then
+    shopt -s nullglob
+    PSK_FILES=(/var/lib/iwd/*.psk)
+    shopt -u nullglob
+    if [[ "${#PSK_FILES[@]}" -gt 0 ]]; then
+        mkdir -p "${ROOT_PREFIX}/var/lib/iwd"
+        chmod 0700 "${ROOT_PREFIX}/var/lib/iwd"
+        cp -a "${PSK_FILES[@]}" "${ROOT_PREFIX}/var/lib/iwd/"
+    fi
 fi
 
 # 6. Ensure target has a bootable kernel (fallback to live KryX kernel & modules).
-if ! ls "${ROOT_PREFIX}"/boot/vmlinuz* >/dev/null 2>&1; then
-    if ls /boot/vmlinuz* >/dev/null 2>&1; then
-        echo "[setup] Copying live KryX kernel & modules into ${TARGET_ROOT}..."
-        cp -a /boot/vmlinuz* "${ROOT_PREFIX}/boot/"
-        ls /boot/System.map* >/dev/null 2>&1 && cp -a /boot/System.map* "${ROOT_PREFIX}/boot/"
-        ls /boot/config* >/dev/null 2>&1 && cp -a /boot/config* "${ROOT_PREFIX}/boot/"
-        LIVE_KVER="$(uname -r)"
-        if [[ -d "/lib/modules/${LIVE_KVER}" ]]; then
-            mkdir -p "${ROOT_PREFIX}/lib/modules"
-            cp -a "/lib/modules/${LIVE_KVER}" "${ROOT_PREFIX}/lib/modules/"
-        fi
+shopt -s nullglob
+TARGET_KERNELS=("${ROOT_PREFIX}"/boot/vmlinuz*)
+LIVE_KERNELS=(/boot/vmlinuz*)
+LIVE_SYSMAPS=(/boot/System.map*)
+LIVE_CONFIGS=(/boot/config*)
+shopt -u nullglob
+if [[ "${#TARGET_KERNELS[@]}" -eq 0 && "${#LIVE_KERNELS[@]}" -gt 0 ]]; then
+    echo "[setup] Copying live KryX kernel & modules into ${TARGET_ROOT}..."
+    cp -a "${LIVE_KERNELS[@]}" "${ROOT_PREFIX}/boot/"
+    [[ "${#LIVE_SYSMAPS[@]}" -gt 0 ]] && cp -a "${LIVE_SYSMAPS[@]}" "${ROOT_PREFIX}/boot/"
+    [[ "${#LIVE_CONFIGS[@]}" -gt 0 ]] && cp -a "${LIVE_CONFIGS[@]}" "${ROOT_PREFIX}/boot/"
+    LIVE_KVER="$(uname -r)"
+    if [[ -d "/lib/modules/${LIVE_KVER}" ]]; then
+        mkdir -p "${ROOT_PREFIX}/lib/modules"
+        cp -a "/lib/modules/${LIVE_KVER}" "${ROOT_PREFIX}/lib/modules/"
     fi
 fi
 
@@ -383,7 +393,10 @@ for req_rel in bin/sh bin/bash sbin/init usr/bin/kpm; do
         MISSING_TARGET+=("/${req_rel}")
     fi
 done
-if ! ls "${ROOT_PREFIX}"/boot/vmlinuz* >/dev/null 2>&1; then
+shopt -s nullglob
+FINAL_KERNELS=("${ROOT_PREFIX}"/boot/vmlinuz*)
+shopt -u nullglob
+if [[ "${#FINAL_KERNELS[@]}" -eq 0 ]]; then
     MISSING_TARGET+=("/boot/vmlinuz*")
 fi
 
