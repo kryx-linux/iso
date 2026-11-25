@@ -1,7 +1,8 @@
 # /etc/ports/sources.list - KryX Linux ports collections (used by `ports` / `kpm ports`)
 # Format: <protocol> <collection> <url> [destination]
-git kryx    https://github.com/kryx-linux/ports.git
-git core    https://github.com/kryx-linux/core.git
-git opt     https://github.com/kryx-linux/opt.git
-git xorg    https://github.com/kryx-linux/xorg.git
-git contrib https://github.com/kryx-linux/contrib.git
+git kryx      https://github.com/kryx-linux/ports.git
+git core      https://github.com/kryx-linux/core.git
+git opt       https://github.com/kryx-linux/opt.git
+git xorg      https://github.com/kryx-linux/xorg.git
+git contrib   https://github.com/kryx-linux/contrib.git
+git compat-32 https://github.com/kryx-linux/compat-32.git
