@@ -82,7 +82,7 @@ cat > "$KPM_CONF" <<EOF
 [paths]
 root = /
 ports_dir = ${PORTS_DIR}
-collections = pkg-tools, kernel, rolling, core, opt, xorg, contrib
+collections = kpm-tools, kernel, system, core, opt, xorg, contrib, compat-32
 cache_dir = ${WORK_ABS}/cache
 source_cache = ${WORK_ABS}/sources
 package_dir = ${OUT_ABS}

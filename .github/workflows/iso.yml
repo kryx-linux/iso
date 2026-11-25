@@ -215,7 +215,7 @@ jobs:
             git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "build/ports-tree/${col}"
           done
           git clone --depth 1 https://github.com/kryx-linux/ports.git build/ports-rolling-tmp
-          for col_dir in pkg-tools kernel system; do
+          for col_dir in kpm-tools kernel system; do
             if [ -d "build/ports-rolling-tmp/${col_dir}" ]; then
               cp -a "build/ports-rolling-tmp/${col_dir}" "build/ports-tree/${col_dir}"
             fi
