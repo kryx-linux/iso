@@ -521,14 +521,22 @@ jobs:
                       if "KRYX_BOOT_DONE" in text:
                           # Drain serial output while waiting up to 45s for /etc/rc.shutdown to cleanly power off QEMU!
                           shut_end = time.time() + 45
+                          pty_open = True
                           while time.time() < shut_end and proc.poll() is None:
-                              rr, _, _ = select.select([master_fd], [], [], 0.2)
-                              if rr:
-                                  try:
-                                      c = os.read(master_fd, 4096)
-                                      if c: buf += c
-                                  except OSError:
-                                      break
+                              if pty_open:
+                                  rr, _, _ = select.select([master_fd], [], [], 0.2)
+                                  if rr:
+                                      try:
+                                          c = os.read(master_fd, 4096)
+                                          if c:
+                                              buf += c
+                                          else:
+                                              pty_open = False
+                                      except OSError:
+                                          # Linux PTY raises EIO when QEMU closes slave_fd while exiting
+                                          pty_open = False
+                              else:
+                                  time.sleep(0.1)
                           passed = (proc.poll() is not None)
                           if not passed:
                               print("FAIL: clean poweroff via /etc/rc.shutdown hung!")
