@@ -6,6 +6,7 @@ set -euo pipefail
 
 TARGET_ROOT="/mnt"
 PROFILE="base"
+INIT_SYSTEM="rc"
 EXTRA_PKGS=""
 HOSTNAME_VAL="kryx"
 TIMEZONE="UTC"
@@ -27,6 +28,7 @@ or run `setup-kryx` for the guided Arch-like interactive TUI installer.
 Options:
   --root <dir>          Target mounted rootfs (default: /mnt)
   --profile <name>      Package profile: minimal, base, or devel (default: base)
+  --init <rc|dinit>     Init system: rc (CRUX SysVinit, default) or dinit (supervising DAG)
   --extra "<pkgs...>"   Extra space-separated binary packages to install
   --pool <dir>          Local offline .pkg.tar.* pool directory (auto-detects /run/live/media/pool)
   --offline             Install strictly offline from local ISO pool (do not touch network)
@@ -43,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --root)       TARGET_ROOT="$2"; shift 2 ;;
         --profile)    PROFILE="$2"; shift 2 ;;
+        --init)       INIT_SYSTEM="$2"; shift 2 ;;
         --extra)      EXTRA_PKGS="$2"; shift 2 ;;
         --pool)       POOL_DIR="$2"; shift 2 ;;
         --offline)    OFFLINE=1; SKIP_SYNC=1; shift ;;
@@ -98,6 +101,21 @@ case "$PROFILE" in
         ;;
 esac
 
+case "$INIT_SYSTEM" in
+    rc|dinit) ;;
+    *)
+        echo "setup: error: invalid init system '${INIT_SYSTEM}' (expected: rc or dinit)" >&2
+        exit 2
+        ;;
+esac
+
+if [[ "$INIT_SYSTEM" == "dinit" ]]; then
+    PKGS+=(dinit dinit-kryx)
+    if [[ "$PROFILE" != "minimal" ]]; then
+        PKGS+=(turnstile)
+    fi
+fi
+
 if [[ -n "$EXTRA_PKGS" ]]; then
     read -r -a EXTRA_ARR <<< "$EXTRA_PKGS"
     PKGS+=("${EXTRA_ARR[@]}")
@@ -106,6 +124,7 @@ fi
 echo "=== KryX Linux Installer (kpm) ==="
 echo "  Target root : ${TARGET_ROOT}"
 echo "  Profile     : ${PROFILE}"
+echo "  Init system : ${INIT_SYSTEM}"
 echo "  Mode        : $( [[ "$OFFLINE" -eq 1 ]] && echo "offline (ISO pool)" || echo "hybrid/online" )"
 echo "  Local pool  : ${POOL_DIR:-<none>}"
 echo "  Hostname    : ${HOSTNAME_VAL}"
@@ -362,6 +381,32 @@ if [[ -f "${ROOT_PREFIX}/etc/rc.conf" ]]; then
         -e "s|^TIMEZONE=.*|TIMEZONE=${TIMEZONE}|" \
         -e "s|^SERVICES=.*|SERVICES=(${RC_SERVICES[*]})|" \
         "${ROOT_PREFIX}/etc/rc.conf"
+fi
+
+# Configure opt-in dinit boot if requested and installed.
+if [[ "$INIT_SYSTEM" == "dinit" ]]; then
+    if [[ -x "${ROOT_PREFIX}/usr/sbin/dinit" && -d "${ROOT_PREFIX}/etc/dinit.d" ]]; then
+        mkdir -p "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/etc/dinit.d/boot.d"
+        if [[ ! -f "${ROOT_PREFIX}/etc/default/grub" ]]; then
+            printf 'GRUB_CMDLINE_LINUX_DEFAULT="init=/usr/sbin/dinit"\n' > "${ROOT_PREFIX}/etc/default/grub"
+        elif ! grep -q 'init=/usr/sbin/dinit' "${ROOT_PREFIX}/etc/default/grub" 2>/dev/null; then
+            if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "${ROOT_PREFIX}/etc/default/grub"; then
+                sed -i -E 's|^(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*)"|\1 init=/usr/sbin/dinit"|; s|=" |="|' "${ROOT_PREFIX}/etc/default/grub"
+            else
+                echo 'GRUB_CMDLINE_LINUX_DEFAULT="init=/usr/sbin/dinit"' >> "${ROOT_PREFIX}/etc/default/grub"
+            fi
+        fi
+        # Ensure enabled boot.d symlinks match actually installed daemons.
+        rm -f "${ROOT_PREFIX}/etc/dinit.d/boot.d"/{dbus,iwd,dhcpcd,turnstiled}
+        [[ -x "${ROOT_PREFIX}/usr/sbin/dbus-daemon" ]] && ln -sf ../dbus       "${ROOT_PREFIX}/etc/dinit.d/boot.d/dbus"
+        [[ -x "${ROOT_PREFIX}/usr/sbin/iwd" ]]         && ln -sf ../iwd        "${ROOT_PREFIX}/etc/dinit.d/boot.d/iwd"
+        [[ -x "${ROOT_PREFIX}/sbin/dhcpcd" ]]          && ln -sf ../dhcpcd     "${ROOT_PREFIX}/etc/dinit.d/boot.d/dhcpcd"
+        [[ -x "${ROOT_PREFIX}/usr/bin/turnstiled" ]]   && ln -sf ../turnstiled "${ROOT_PREFIX}/etc/dinit.d/boot.d/turnstiled"
+        echo "[setup] Configured dinit as default GRUB init (init=/usr/sbin/dinit; rc remains available as fallback)."
+    else
+        echo "[setup] Note: dinit not installed (unavailable in offline pool); system will boot CRUX rc." >&2
+        echo "[setup]       Run 'kpm install -d dinit dinit-kryx && kryx-init use dinit' after boot to enable dinit." >&2
+    fi
 fi
 
 # Generate UUID-based /etc/fstab from currently mounted target block devices when available.

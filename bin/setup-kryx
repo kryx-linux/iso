@@ -24,6 +24,7 @@ done
 MODE="online"
 [[ -n "$POOL_DIR" ]] && MODE="offline"
 PROFILE="base"
+INIT_SYSTEM="rc"
 EXTRA_PKGS=""
 HOSTNAME_VAL="kryx"
 TIMEZONE="UTC"
@@ -404,6 +405,22 @@ PROFILE="$(ui_menu "Package Profile" "Select a KryX Linux package profile:" \
     "minimal" "Barebones rootfs + kpm + ports (smallest footprint)" \
     "devel"   "Base + C/C++/Go build toolchain (requires online repo)")" || { echo "Aborted."; exit 1; }
 
+# 4b. Init system selection (dinit opt-in when online/hybrid or bundled in pool)
+HAS_DINIT_POOL=0
+if [[ -n "$POOL_DIR" ]]; then
+    shopt -s nullglob
+    _dinit_matches=("${POOL_DIR}"/dinit#*.pkg.tar.*)
+    shopt -u nullglob
+    [[ "${#_dinit_matches[@]}" -gt 0 ]] && HAS_DINIT_POOL=1
+fi
+if [[ "$MODE" != "offline" || "$HAS_DINIT_POOL" -eq 1 ]]; then
+    INIT_SYSTEM="$(ui_menu "Init System" "Choose the init system for the installed KryX Linux system:" \
+        "rc"    "CRUX SysVinit + rc (Default — 91 CRUX services out of the box)" \
+        "dinit" "dinit supervising DAG init + rc.d bridge (Opt-in, dual-init safe)")" || { echo "Aborted."; exit 1; }
+else
+    INIT_SYSTEM="rc"
+fi
+
 # 5. Extra packages, hostname, timezone, root password, bootloader
 if [[ "$MODE" != "offline" ]]; then
     EXTRA_PKGS="$(ui_input "Extra Packages (Optional)" "Space-separated extra binary packages to install (leave blank for none):" "$EXTRA_PKGS")" || { echo "Aborted."; exit 1; }
@@ -435,7 +452,7 @@ else
 fi
 
 # 6. Summary & confirmation
-SUMMARY="Target root : ${TARGET_ROOT}\nMode        : ${MODE}\nLocal pool  : ${POOL_DIR:-<none>}\nProfile     : ${PROFILE}\nExtra pkgs  : ${EXTRA_PKGS:-<none>}\nHostname    : ${HOSTNAME_VAL}\nTimezone    : ${TIMEZONE}\nGRUB install: $( [[ "$INSTALL_GRUB" -eq 1 ]] && echo "yes ($( [[ "$IS_UEFI" -eq 1 ]] && echo UEFI || echo "BIOS ${BOOT_DISK}" ))" || echo "no (manual)" )\n\nStart installation now?"
+SUMMARY="Target root : ${TARGET_ROOT}\nMode        : ${MODE}\nLocal pool  : ${POOL_DIR:-<none>}\nProfile     : ${PROFILE}\nInit system : ${INIT_SYSTEM}\nExtra pkgs  : ${EXTRA_PKGS:-<none>}\nHostname    : ${HOSTNAME_VAL}\nTimezone    : ${TIMEZONE}\nGRUB install: $( [[ "$INSTALL_GRUB" -eq 1 ]] && echo "yes ($( [[ "$IS_UEFI" -eq 1 ]] && echo UEFI || echo "BIOS ${BOOT_DISK}" ))" || echo "no (manual)" )\n\nStart installation now?"
 
 if ! ui_yesno "Confirm Installation" "$SUMMARY" 0; then
     echo "Installation aborted."
@@ -448,6 +465,7 @@ clear 2>/dev/null || true
 SETUP_ARGS=(
     --root "$TARGET_ROOT"
     --profile "$PROFILE"
+    --init "$INIT_SYSTEM"
     --hostname "$HOSTNAME_VAL"
     --timezone "$TIMEZONE"
     --yes
