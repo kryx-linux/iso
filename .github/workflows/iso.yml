@@ -372,6 +372,7 @@ jobs:
             mtools \
             ovmf \
             qemu-system-x86 \
+            qemu-utils \
             squashfs-tools \
             xorriso \
             zstd
@@ -408,12 +409,12 @@ jobs:
 
       - name: Smoke-test live ISO boot, offline setup, and setup-chroot in QEMU (baseline qemu64 BIOS)
         run: |
-          qemu-img create -f qcow2 /tmp/kryx-ci-disk.qcow2 4G
+          truncate -s 4G /tmp/kryx-ci-disk.img
           python3 - <<'PY'
           import os, pty, select, socket, subprocess, sys, time
 
           iso = "kryx-linux-x86_64.iso"
-          disk = "/tmp/kryx-ci-disk.qcow2"
+          disk = "/tmp/kryx-ci-disk.img"
           mon_sock = "/tmp/qemu-mon.sock"
           if os.path.exists(mon_sock):
               os.unlink(mon_sock)
@@ -424,7 +425,7 @@ jobs:
               "-cpu", "qemu64",
               "-m", "2048",
               "-smp", "2",
-              "-drive", f"file={disk},format=qcow2,if=virtio",
+              "-drive", f"file={disk},format=raw,if=virtio",
               "-cdrom", iso,
               "-boot", "d",
               "-display", "none",
