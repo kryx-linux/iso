@@ -24,6 +24,8 @@ SQUASHFS_COMP="zstd"
 VERIFY_SIG=0
 SKIP_SYNC=0
 ALLOW_INCOMPLETE=0
+STAGE_POOL=1
+POOL_DIR=""
 
 usage() {
     cat <<'EOF'
@@ -45,6 +47,8 @@ Options:
   --comp <algo>           SquashFS compression: zstd, xz, gzip (default: zstd)
   --verify                Require index.json.sig verification during kpm sync
   --no-sync               Do not run kpm sync (use cached index or --local-pkgs)
+  --pool-dir <dir>        Stage offline base .pkg.tar.* pool into ISO dir (default: <build-dir>/iso/pool)
+  --no-pool               Do not bundle offline base package pool onto the ISO
   --allow-incomplete      Warn instead of failing if an essential live binary is missing
   -h, --help              Show this help message
 EOF
@@ -65,6 +69,8 @@ while [[ $# -gt 0 ]]; do
         --comp)             SQUASHFS_COMP="$2"; shift 2 ;;
         --verify)           VERIFY_SIG=1; shift ;;
         --no-sync)          SKIP_SYNC=1; shift ;;
+        --pool-dir)         POOL_DIR="$2"; shift 2 ;;
+        --no-pool)          STAGE_POOL=0; shift ;;
         --allow-incomplete) ALLOW_INCOMPLETE=1; shift ;;
         -h|--help)          usage; exit 0 ;;
         *)                  echo "mkrootfs.sh: unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -265,7 +271,7 @@ echo "[mkrootfs] Kernel staged at ${BUILD_ABS}/iso/boot/vmlinuz (from $(basename
 if [[ ! -x "${ROOTFS_DIR}/usr/bin/kpm" ]]; then
     install -m 0755 "$KPM_BIN" "${ROOTFS_DIR}/usr/bin/kpm"
 fi
-for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge; do
+for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge prt-get; do
     ln -sf kpm "${ROOTFS_DIR}/usr/bin/${link}"
 done
 if [[ -n "$GPORTS_BIN" && -x "$GPORTS_BIN" && ! -x "${ROOTFS_DIR}/usr/bin/gports" ]]; then
@@ -273,6 +279,7 @@ if [[ -n "$GPORTS_BIN" && -x "$GPORTS_BIN" && ! -x "${ROOTFS_DIR}/usr/bin/gports
 fi
 
 install -m 0755 "${REPO_ROOT}/bin/setup"        "${ROOTFS_DIR}/usr/bin/setup"
+install -m 0755 "${REPO_ROOT}/bin/setup-kryx"   "${ROOTFS_DIR}/usr/bin/setup-kryx"
 install -m 0755 "${REPO_ROOT}/bin/setup-chroot" "${ROOTFS_DIR}/usr/bin/setup-chroot"
 
 # 5. Install minimal live system configs (/etc/inittab, /etc/rc, /etc/issue, /etc/motd, etc.).
@@ -363,7 +370,10 @@ check_any_path "tar"                      bin/tar usr/bin/tar
 check_any_path "xz"                       usr/bin/xz bin/xz
 check_any_path "zstd"                     usr/bin/zstd bin/zstd
 check_any_path "kpm"                      usr/bin/kpm
+check_any_path "dialog (TUI)"             usr/bin/dialog bin/dialog
+check_any_path "iwctl (iwd Wi-Fi)"        usr/bin/iwctl usr/sbin/iwd
 check_any_path "setup installer"          usr/bin/setup
+check_any_path "setup-kryx TUI installer" usr/bin/setup-kryx
 check_any_path "setup-chroot"             usr/bin/setup-chroot
 check_any_path "kpm.ini"                  etc/kpm.ini
 check_any_path "kryx-release.pub"         etc/kpm/keys/kryx-release.pub
@@ -381,6 +391,32 @@ if [[ "${#MISSING_ESSENTIALS[@]}" -gt 0 ]]; then
     fi
 else
     echo "[mkrootfs] All core & essential live components verified present."
+fi
+
+# 6b. Stage offline base package pool directly onto ISO media (/pool/) so bare-metal
+#     installs work 100% offline (accessible at /run/live/media/pool without consuming RAM).
+if [[ "$STAGE_POOL" -eq 1 && -n "$LOCAL_PKG_DIR" && -d "$LOCAL_PKG_DIR" ]]; then
+    [[ -z "$POOL_DIR" ]] && POOL_DIR="${BUILD_ABS}/iso/pool"
+    echo "[mkrootfs] Staging offline base package pool into ${POOL_DIR}..."
+    rm -rf "$POOL_DIR"
+    mkdir -p "$POOL_DIR"
+    : > "${POOL_DIR}/packages.list"
+    shopt -s nullglob
+    POOLED_COUNT=0
+    for p in "${LIVE_PKGS[@]}"; do
+        matches=("${LOCAL_PKG_DIR}/${p}"#*.pkg.tar.*)
+        if [[ "${#matches[@]}" -eq 0 ]]; then
+            matches=("${BUILD_ABS}/kpm-cache/bin/${p}"#*.pkg.tar.*)
+        fi
+        if [[ "${#matches[@]}" -gt 0 ]]; then
+            base_arc="$(basename "${matches[0]}")"
+            cp -f "${matches[0]}" "${POOL_DIR}/${base_arc}"
+            printf '%s\n' "$base_arc" >> "${POOL_DIR}/packages.list"
+            POOLED_COUNT=$((POOLED_COUNT + 1))
+        fi
+    done
+    chown -R 0:0 "$POOL_DIR" 2>/dev/null || true
+    echo "[mkrootfs] Staged ${POOLED_COUNT} offline base package archive(s) in ${POOL_DIR} ($(du -sh "$POOL_DIR" | awk '{print $1}'))."
 fi
 
 # 7. Pack live rootfs into SquashFS image.

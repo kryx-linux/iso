@@ -141,7 +141,7 @@ install -m 0755 "$KPM_INDEX_BIN" "${ROOTFS_ABS}/usr/bin/kpm-index"
 if [[ -f "$KRYX_SRC_BIN" ]]; then
     install -m 0755 "$KRYX_SRC_BIN" "${ROOTFS_ABS}/usr/bin/kryx-src"
 fi
-for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge; do
+for link in pkgadd pkgrm pkginfo pkgmk ports rejmerge prt-get; do
     ln -sf kpm "${ROOTFS_ABS}/usr/bin/${link}"
 done
 install -m 0644 "$KPM_INI" "${ROOTFS_ABS}/etc/kpm.ini"

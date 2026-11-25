@@ -235,6 +235,7 @@ lint:
 		scripts/mkiso.sh \
 		scripts/verify-iso.sh \
 		bin/setup \
+		bin/setup-kryx \
 		bin/setup-chroot
 	sh -n initramfs/init config/rc config/rc.shutdown
 

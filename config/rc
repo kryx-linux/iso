@@ -38,9 +38,18 @@ elif [ -x /sbin/start_udev ]; then
     /sbin/start_udev
 fi
 
-# Bring up loopback and request DHCP on Ethernet interfaces in background
+# Bring up loopback, D-Bus, iwd (Wi-Fi), and dhcpcd in background
 if command -v ip >/dev/null 2>&1; then
     ip link set lo up 2>/dev/null || true
+fi
+if [ -x /usr/sbin/dbus-daemon ]; then
+    mkdir -p /run/dbus /var/lib/dbus
+    [ -x /usr/bin/dbus-uuidgen ] && /usr/bin/dbus-uuidgen --ensure 2>/dev/null || true
+    /usr/sbin/dbus-daemon --system --fork 2>/dev/null || true
+fi
+if [ -x /usr/sbin/iwd ]; then
+    mkdir -p /run/iwd /var/lib/iwd /etc/iwd
+    /usr/sbin/iwd >/dev/null 2>&1 &
 fi
 if command -v dhcpcd >/dev/null 2>&1; then
     dhcpcd -b -q 2>/dev/null || true

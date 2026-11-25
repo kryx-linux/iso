@@ -31,7 +31,7 @@ printf '%s\n' "$TOC" | grep -qi "El Torito" || {
 }
 
 echo "[verify-iso] Checking required ISO root files..."
-for iso_path in /kryx-media /boot/vmlinuz /boot/initrd.img /boot/grub/grub.cfg /live/rootfs.squashfs; do
+for iso_path in /kryx-media /boot/vmlinuz /boot/initrd.img /boot/grub/grub.cfg /live/rootfs.squashfs /pool/packages.list; do
     if ! xorriso -indev "$ISO_FILE" -ls "$iso_path" >/dev/null 2>&1; then
         echo "verify-iso.sh: error: required ISO entry missing: ${iso_path}" >&2
         exit 1
@@ -48,7 +48,10 @@ for req_path in \
     squashfs-root/bin/sh \
     squashfs-root/bin/login \
     squashfs-root/usr/bin/kpm \
+    squashfs-root/usr/bin/dialog \
+    squashfs-root/usr/bin/iwctl \
     squashfs-root/usr/bin/setup \
+    squashfs-root/usr/bin/setup-kryx \
     squashfs-root/usr/bin/setup-chroot \
     squashfs-root/etc/kpm.ini \
     squashfs-root/etc/kpm/keys/kryx-release.pub \
@@ -81,6 +84,9 @@ if command -v readelf >/dev/null 2>&1; then
         sbin/dhcpcd \
         usr/bin/curl \
         usr/bin/gawk \
+        usr/bin/dialog \
+        usr/bin/iwctl \
+        usr/sbin/iwd \
         usr/sbin/dbus-daemon \
         usr/sbin/grub-install \
         usr/bin/grub-mkrescue; do

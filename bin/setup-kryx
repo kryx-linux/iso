@@ -1,0 +1,438 @@
+#!/usr/bin/env bash
+# setup-kryx - Arch-like guided TUI installer for KryX Linux (dialog + plain-terminal fallback).
+# Supports bare-metal laptops with Wi-Fi (iwctl), 100% offline installs from the ISO
+# base pool (/run/live/media/pool), hybrid/online rolling-x86_64 installs, guided disk
+# partitioning, automatic UUID fstab, root password, and BIOS/UEFI GRUB installation.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="rolling"
+
+SETUP_BIN="$(command -v setup 2>/dev/null || echo "${SCRIPT_DIR}/setup")"
+SETUP_CHROOT_BIN="$(command -v setup-chroot 2>/dev/null || echo "${SCRIPT_DIR}/setup-chroot")"
+KPM_BIN="$(command -v kpm 2>/dev/null || echo /usr/bin/kpm)"
+
+TARGET_ROOT="/mnt"
+POOL_DIR=""
+for cand in /run/live/media/pool /media/kryx/pool /mnt/cdrom/pool; do
+    if [[ -d "$cand" && -f "${cand}/packages.list" ]]; then
+        POOL_DIR="$cand"
+        break
+    fi
+done
+
+MODE="online"
+[[ -n "$POOL_DIR" ]] && MODE="offline"
+PROFILE="base"
+EXTRA_PKGS=""
+HOSTNAME_VAL="kryx"
+TIMEZONE="UTC"
+BOOT_DISK=""
+INSTALL_GRUB=1
+FORCE_PLAIN=0
+
+usage() {
+    cat <<'EOF'
+Usage: setup-kryx [options]
+
+Arch-like interactive TUI installer for KryX Linux (uses `dialog` when available,
+with an automatic plain-terminal fallback).
+
+Options:
+  --plain               Force plain-terminal interactive prompts instead of dialog
+  --root <dir>          Pre-fill target root mountpoint (default: /mnt)
+  --pool <dir>          Pre-fill offline ISO package pool directory
+  --kpm-bin <path>      Path to static kpm binary (default: auto-detected)
+  -h, --help            Show this help message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --plain)    FORCE_PLAIN=1; shift ;;
+        --root)     TARGET_ROOT="$2"; shift 2 ;;
+        --pool)     POOL_DIR="$2"; shift 2 ;;
+        --kpm-bin)  KPM_BIN="$2"; shift 2 ;;
+        -h|--help)  usage; exit 0 ;;
+        *)          echo "setup-kryx: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "setup-kryx: error: must be run as root" >&2
+    exit 1
+fi
+
+USE_DIALOG=0
+if [[ "$FORCE_PLAIN" -eq 0 ]] && command -v dialog >/dev/null 2>&1 && [[ -t 0 && -t 1 ]]; then
+    USE_DIALOG=1
+fi
+
+TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/setup-kryx.XXXXXX")"
+trap 'rm -f "$TMP_OUT"' EXIT
+
+IS_UEFI=0
+[[ -d /sys/firmware/efi ]] && IS_UEFI=1
+
+# --- UI helpers (dialog TUI with plain-text fallback) ---
+
+ui_msg() {
+    local title="$1" msg="$2"
+    if [[ "$USE_DIALOG" -eq 1 ]]; then
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --msgbox "$msg" 13 70
+    else
+        echo ""
+        echo "=== $title ==="
+        printf '%b\n' "$msg"
+    fi
+}
+
+ui_yesno() {
+    local title="$1" msg="$2" default_no="${3:-0}"
+    if [[ "$USE_DIALOG" -eq 1 ]]; then
+        local extra=()
+        [[ "$default_no" -eq 1 ]] && extra=(--defaultno)
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" "${extra[@]}" --yesno "$msg" 14 70
+        return $?
+    else
+        echo ""
+        echo "=== $title ==="
+        printf '%b\n' "$msg"
+        local prompt="[Y/n]"
+        [[ "$default_no" -eq 1 ]] && prompt="[y/N]"
+        read -r -p "Continue? ${prompt} " ans
+        if [[ -z "$ans" ]]; then
+            [[ "$default_no" -eq 0 ]] && return 0 || return 1
+        fi
+        case "$ans" in
+            y|Y|yes|YES) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+}
+
+ui_input() {
+    local title="$1" msg="$2" def="$3"
+    if [[ "$USE_DIALOG" -eq 1 ]]; then
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --inputbox "$msg" 11 70 "$def" 2>"$TMP_OUT" || return 1
+        cat "$TMP_OUT"
+    else
+        echo ""
+        echo "=== $title ==="
+        printf '%b\n' "$msg"
+        local val=""
+        read -r -p "[${def}]: " val
+        echo "${val:-$def}"
+    fi
+}
+
+ui_password() {
+    local title="$1" msg="$2"
+    if [[ "$USE_DIALOG" -eq 1 ]]; then
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --insecure --passwordbox "$msg" 10 70 2>"$TMP_OUT" || return 1
+        cat "$TMP_OUT"
+    else
+        echo ""
+        echo "=== $title ==="
+        printf '%b\n' "$msg"
+        local val=""
+        read -rs -p "Password: " val
+        echo "" >&2
+        echo "$val"
+    fi
+}
+
+ui_menu() {
+    local title="$1" msg="$2"
+    shift 2
+    if [[ "$USE_DIALOG" -eq 1 ]]; then
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --menu "$msg" 16 72 7 "$@" 2>"$TMP_OUT" || return 1
+        cat "$TMP_OUT"
+    else
+        echo ""
+        echo "=== $title ==="
+        printf '%b\n' "$msg"
+        local keys=()
+        local idx=1
+        while [[ $# -ge 2 ]]; do
+            keys+=("$1")
+            printf '  %d) %-14s - %s\n' "$idx" "$1" "$2"
+            shift 2
+            idx=$((idx + 1))
+        done
+        local choice=""
+        read -r -p "Select [1]: " choice
+        choice="${choice:-1}"
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#keys[@]} )); then
+            echo "${keys[$((choice - 1))]}"
+        else
+            echo "$choice"
+        fi
+    fi
+}
+
+# --- Helper: Optional Wi-Fi setup via iwctl ---
+
+configure_wifi() {
+    if ! command -v iwctl >/dev/null 2>&1; then
+        ui_msg "Wi-Fi Unavailable" "iwctl (iwd) is not installed on this image. Configure Wi-Fi manually with wpa_supplicant or use offline install."
+        return 0
+    fi
+
+    local wlan=""
+    for p in /sys/class/net/*; do
+        [[ -d "${p}/wireless" ]] || continue
+        wlan="$(basename "$p")"
+        break
+    done
+    if [[ -z "$wlan" ]]; then
+        ui_msg "No Wireless Device" "No wireless network interface was detected. You can continue with offline ISO installation."
+        return 0
+    fi
+
+    iwctl station "$wlan" scan 2>/dev/null || true
+    sleep 2
+    local ssid psk
+    ssid="$(ui_input "Wi-Fi Network (${wlan})" "Enter your Wi-Fi SSID (leave blank to skip):" "")" || return 0
+    [[ -z "$ssid" ]] && return 0
+    psk="$(ui_password "Wi-Fi Passphrase" "Enter passphrase for '${ssid}' (leave blank for open network):")" || return 0
+
+    clear 2>/dev/null || true
+    echo "[setup-kryx] Connecting ${wlan} to '${ssid}'..."
+    if [[ -n "$psk" ]]; then
+        iwctl --passphrase "$psk" station "$wlan" connect "$ssid" || true
+    else
+        iwctl station "$wlan" connect "$ssid" || true
+    fi
+    sleep 3
+    if command -v dhcpcd >/dev/null 2>&1; then
+        dhcpcd -q -t 10 "$wlan" 2>/dev/null || true
+    fi
+    ui_msg "Wi-Fi Status" "Current IP addresses on ${wlan}:\n\n$(ip -brief addr show "$wlan" 2>/dev/null || echo 'no IP yet')"
+}
+
+# --- Helper: Partition / Mount target disk ---
+
+configure_disk() {
+    local disk_action
+    disk_action="$(ui_menu "Disk & Mountpoint" "Choose how to prepare ${TARGET_ROOT} (boot mode: $( [[ "$IS_UEFI" -eq 1 ]] && echo UEFI || echo BIOS )):" \
+        "mounted"   "Use already-mounted ${TARGET_ROOT} (manual partitioning done)" \
+        "auto"      "Erase & auto-partition a whole disk (GPT/UEFI or MBR/BIOS)" \
+        "cfdisk"    "Launch cfdisk interactively, then mount manually")" || return 1
+
+    case "$disk_action" in
+        mounted)
+            while true; do
+                TARGET_ROOT="$(ui_input "Target Root Directory" "Enter the directory where your KryX root partition is mounted:" "$TARGET_ROOT")" || return 1
+                if [[ -d "$TARGET_ROOT" && "$TARGET_ROOT" != "/" ]]; then
+                    local src_dev
+                    src_dev="$(findmnt -n -o SOURCE "$TARGET_ROOT" 2>/dev/null || true)"
+                    if [[ -b "$src_dev" ]]; then
+                        BOOT_DISK="/dev/$(lsblk -no PKNAME "$src_dev" 2>/dev/null | head -n 1 || true)"
+                        [[ "$BOOT_DISK" == "/dev/" ]] && BOOT_DISK=""
+                    fi
+                    return 0
+                fi
+                ui_msg "Invalid Root" "Directory '${TARGET_ROOT}' does not exist or is '/'. Mount your target partition (e.g. /mnt) first."
+            done
+            ;;
+        cfdisk)
+            clear 2>/dev/null || true
+            lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
+            echo ""
+            read -r -p "Enter disk to partition with cfdisk (e.g. /dev/nvme0n1 or /dev/sda): " dev
+            [[ -b "$dev" ]] && cfdisk "$dev"
+            ui_msg "Mount Partitions" "Format and mount your partitions at ${TARGET_ROOT} (and ${TARGET_ROOT}/boot/efi for UEFI) in another TTY or subshell.\n\nDropping to a shell now — type 'exit' when ${TARGET_ROOT} is mounted."
+            clear 2>/dev/null || true
+            /bin/bash || true
+            BOOT_DISK="$dev"
+            return 0
+            ;;
+        auto)
+            local disk_args=()
+            while IFS= read -r line; do
+                local dname dsize dmodel
+                dname="$(awk '{print $1}' <<< "$line")"
+                dsize="$(awk '{print $2}' <<< "$line")"
+                dmodel="$(awk '{$1=""; $2=""; sub(/^[ \t]+/, ""); print}' <<< "$line")"
+                [[ -b "/dev/${dname}" ]] && disk_args+=("/dev/${dname}" "${dsize} ${dmodel:-disk}")
+            done < <(lsblk -dn -o NAME,SIZE,MODEL -e 7,11 2>/dev/null)
+
+            if [[ "${#disk_args[@]}" -eq 0 ]]; then
+                ui_msg "No Disks Found" "No block disks found via lsblk. Partition and mount ${TARGET_ROOT} manually."
+                return 1
+            fi
+
+            local chosen
+            chosen="$(ui_menu "Select Target Disk" "WARNING: ALL DATA ON THE SELECTED DISK WILL BE ERASED!" "${disk_args[@]}")" || return 1
+            if ! ui_yesno "Confirm Disk Erase" "ALL partitions and data on ${chosen} will be PERMANENTLY WIPED and formatted for KryX Linux ($( [[ "$IS_UEFI" -eq 1 ]] && echo 'GPT + 512M EFI + ext4 root' || echo 'MBR + ext4 root' )).\n\nProceed?" 1; then
+                return 1
+            fi
+
+            BOOT_DISK="$chosen"
+            clear 2>/dev/null || true
+            echo "[setup-kryx] Partitioning ${chosen}..."
+            umount -R "$TARGET_ROOT" 2>/dev/null || true
+            wipefs -a "$chosen" 2>/dev/null || true
+
+            local part_prefix="$chosen"
+            [[ "$chosen" =~ [0-9]$ ]] && part_prefix="${chosen}p"
+
+            if [[ "$IS_UEFI" -eq 1 ]]; then
+                sfdisk "$chosen" <<'EOF'
+label: gpt
+size=512M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI"
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="KryX"
+EOF
+                sleep 1
+                udevadm settle 2>/dev/null || true
+                mkfs.fat -F32 -n KRYX_EFI "${part_prefix}1"
+                mkfs.ext4 -F -L KRYX_ROOT "${part_prefix}2"
+                mkdir -p "$TARGET_ROOT"
+                mount "${part_prefix}2" "$TARGET_ROOT"
+                mkdir -p "${TARGET_ROOT}/boot/efi"
+                mount "${part_prefix}1" "${TARGET_ROOT}/boot/efi"
+            else
+                sfdisk "$chosen" <<'EOF'
+label: dos
+type=83, bootable
+EOF
+                sleep 1
+                udevadm settle 2>/dev/null || true
+                mkfs.ext4 -F -L KRYX_ROOT "${part_prefix}1"
+                mkdir -p "$TARGET_ROOT"
+                mount "${part_prefix}1" "$TARGET_ROOT"
+            fi
+            return 0
+            ;;
+    esac
+}
+
+# --- Main Guided Flow ---
+
+if ! ui_yesno "Welcome to KryX Linux" \
+"Welcome to the KryX Linux guided installer (setup-kryx).\n\nBoot mode: $( [[ "$IS_UEFI" -eq 1 ]] && echo "UEFI" || echo "Legacy BIOS" )\nOffline ISO pool: ${POOL_DIR:-not detected (online mode)}\n\nThis wizard will guide you through Wi-Fi, disk setup, base installation, root password, and GRUB bootloader setup.\n\nProceed?"; then
+    echo "Installation aborted."
+    exit 0
+fi
+
+# 1. Optional Wi-Fi configuration (for laptops without Ethernet)
+if ui_yesno "Wi-Fi Setup (Optional)" "Would you like to connect to a Wi-Fi network now?\n\n(Select No to install 100% offline from the ISO base package pool.)" 1; then
+    configure_wifi
+fi
+
+# 2. Disk partitioning & mounting
+configure_disk || { echo "Aborted."; exit 1; }
+
+# 3. Installation source
+if [[ -n "$POOL_DIR" ]]; then
+    MODE="$(ui_menu "Installation Source" "Choose how to install KryX Linux packages into ${TARGET_ROOT}:" \
+        "offline" "Offline ISO base pool (${POOL_DIR} — no internet needed)" \
+        "hybrid"  "Hybrid: Offline ISO pool + Online rolling-x86_64 extra packages" \
+        "online"  "Online only: KryX rolling-x86_64 binary repository")" || { echo "Aborted."; exit 1; }
+else
+    MODE="online"
+fi
+
+# 4. Package profile
+PROFILE="$(ui_menu "Package Profile" "Select a KryX Linux package profile:" \
+    "base"    "Bootable base system + kernel + Wi-Fi + GRUB (Recommended)" \
+    "minimal" "Barebones rootfs + kpm + ports (smallest footprint)" \
+    "devel"   "Base + C/C++/Go build toolchain (requires online repo)")" || { echo "Aborted."; exit 1; }
+
+# 5. Extra packages, hostname, timezone, root password, bootloader
+if [[ "$MODE" != "offline" ]]; then
+    EXTRA_PKGS="$(ui_input "Extra Packages (Optional)" "Space-separated extra binary packages to install (leave blank for none):" "$EXTRA_PKGS")" || { echo "Aborted."; exit 1; }
+fi
+HOSTNAME_VAL="$(ui_input "Hostname" "Enter the hostname for the new KryX system:" "$HOSTNAME_VAL")" || { echo "Aborted."; exit 1; }
+TIMEZONE="$(ui_input "Timezone" "Enter timezone under /usr/share/zoneinfo (e.g. UTC, Asia/Dhaka):" "$TIMEZONE")" || { echo "Aborted."; exit 1; }
+
+ROOT_PASS=""
+while true; do
+    p1="$(ui_password "Root Password" "Set root password for the new system (leave blank to set later in chroot):")" || { echo "Aborted."; exit 1; }
+    if [[ -z "$p1" ]]; then
+        break
+    fi
+    p2="$(ui_password "Confirm Root Password" "Re-enter root password:")" || { echo "Aborted."; exit 1; }
+    if [[ "$p1" == "$p2" ]]; then
+        ROOT_PASS="$p1"
+        break
+    fi
+    ui_msg "Password Mismatch" "Passwords did not match. Please try again."
+done
+
+if ui_yesno "GRUB Bootloader" "Automatically install and configure GRUB ($( [[ "$IS_UEFI" -eq 1 ]] && echo 'UEFI to /boot/efi' || echo "BIOS to ${BOOT_DISK:-disk}" )) after installing packages?" 0; then
+    INSTALL_GRUB=1
+    if [[ "$IS_UEFI" -eq 0 && -z "$BOOT_DISK" ]]; then
+        BOOT_DISK="$(ui_input "GRUB BIOS Target Disk" "Enter whole disk for GRUB MBR install (e.g. /dev/sda):" "/dev/sda")" || { echo "Aborted."; exit 1; }
+    fi
+else
+    INSTALL_GRUB=0
+fi
+
+# 6. Summary & confirmation
+SUMMARY="Target root : ${TARGET_ROOT}\nMode        : ${MODE}\nLocal pool  : ${POOL_DIR:-<none>}\nProfile     : ${PROFILE}\nExtra pkgs  : ${EXTRA_PKGS:-<none>}\nHostname    : ${HOSTNAME_VAL}\nTimezone    : ${TIMEZONE}\nGRUB install: $( [[ "$INSTALL_GRUB" -eq 1 ]] && echo "yes ($( [[ "$IS_UEFI" -eq 1 ]] && echo UEFI || echo "BIOS ${BOOT_DISK}" ))" || echo "no (manual)" )\n\nStart installation now?"
+
+if ! ui_yesno "Confirm Installation" "$SUMMARY" 0; then
+    echo "Installation aborted."
+    exit 0
+fi
+
+clear 2>/dev/null || true
+
+# 7. Run `setup` to install base system & configs
+SETUP_ARGS=(
+    --root "$TARGET_ROOT"
+    --profile "$PROFILE"
+    --hostname "$HOSTNAME_VAL"
+    --timezone "$TIMEZONE"
+    --yes
+)
+[[ -n "$POOL_DIR" && "$MODE" != "online" ]] && SETUP_ARGS+=(--pool "$POOL_DIR")
+[[ "$MODE" == "offline" ]] && SETUP_ARGS+=(--offline)
+[[ -n "$EXTRA_PKGS" ]] && SETUP_ARGS+=(--extra "$EXTRA_PKGS")
+
+"$SETUP_BIN" "${SETUP_ARGS[@]}"
+
+# 8. Apply root password if provided
+if [[ -n "$ROOT_PASS" ]]; then
+    echo "[setup-kryx] Setting root password in ${TARGET_ROOT}..."
+    printf 'root:%s\n' "$ROOT_PASS" | chroot "$TARGET_ROOT" /usr/sbin/chpasswd 2>/dev/null \
+        || printf '%s\n%s\n' "$ROOT_PASS" "$ROOT_PASS" | chroot "$TARGET_ROOT" /usr/bin/passwd root >/dev/null 2>&1 \
+        || echo "[setup-kryx] Warning: could not set root password automatically; run 'passwd' inside chroot." >&2
+fi
+
+# 9. Automatically install GRUB if selected
+if [[ "$INSTALL_GRUB" -eq 1 ]]; then
+    echo "[setup-kryx] Installing GRUB bootloader inside ${TARGET_ROOT}..."
+    if [[ "$IS_UEFI" -eq 1 ]]; then
+        "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c '
+            grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=KryX --removable
+            grub-mkconfig -o /boot/grub/grub.cfg
+        ' || echo "[setup-kryx] Warning: UEFI GRUB install reported an issue; review inside setup-chroot." >&2
+    elif [[ -n "$BOOT_DISK" ]]; then
+        "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c "
+            grub-install --target=i386-pc '${BOOT_DISK}'
+            grub-mkconfig -o /boot/grub/grub.cfg
+        " || echo "[setup-kryx] Warning: BIOS GRUB install reported an issue; review inside setup-chroot." >&2
+    fi
+fi
+
+# 10. Offer chroot or reboot
+FINAL_ACTION="$(ui_menu "Installation Complete" "KryX Linux has been installed into ${TARGET_ROOT}!" \
+    "chroot" "Enter chroot now (setup-chroot ${TARGET_ROOT})" \
+    "reboot" "Unmount ${TARGET_ROOT} and reboot into KryX Linux" \
+    "shell"  "Return to live root shell")" || exit 0
+
+case "$FINAL_ACTION" in
+    chroot)
+        exec "$SETUP_CHROOT_BIN" "$TARGET_ROOT"
+        ;;
+    reboot)
+        umount -R "$TARGET_ROOT" 2>/dev/null || true
+        reboot
+        ;;
+    *)
+        echo "Returned to live shell. Run 'setup-chroot ${TARGET_ROOT}' anytime."
+        ;;
+esac

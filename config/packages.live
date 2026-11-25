@@ -51,7 +51,7 @@ less
 e2fsprogs
 dosfstools
 
-# Networking & TLS (core + opt)
+# Networking, Wi-Fi & Hardware Firmware (core + opt — laptop-ready, no Ethernet required)
 libmnl
 libnghttp2
 openssl
@@ -63,6 +63,11 @@ libnl
 dbus
 wireless-tools
 wpa_supplicant
+iwd
+linux-firmware
+
+# Interactive TUI installer dependency (opt)
+dialog
 
 # Bootloader tools for target install (opt)
 libpng

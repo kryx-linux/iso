@@ -406,12 +406,14 @@ jobs:
       - name: Verify built ISO structure, shared libs, and busybox ISA
         run: ./scripts/verify-iso.sh kryx-linux-x86_64.iso
 
-      - name: Smoke-test live ISO boot in QEMU (baseline qemu64 BIOS)
+      - name: Smoke-test live ISO boot, offline setup, and setup-chroot in QEMU (baseline qemu64 BIOS)
         run: |
+          qemu-img create -f qcow2 /tmp/kryx-ci-disk.qcow2 4G
           python3 - <<'PY'
           import os, pty, select, socket, subprocess, sys, time
 
           iso = "kryx-linux-x86_64.iso"
+          disk = "/tmp/kryx-ci-disk.qcow2"
           mon_sock = "/tmp/qemu-mon.sock"
           if os.path.exists(mon_sock):
               os.unlink(mon_sock)
@@ -420,8 +422,9 @@ jobs:
           cmd = [
               "qemu-system-x86_64",
               "-cpu", "qemu64",
-              "-m", "1024",
+              "-m", "2048",
               "-smp", "2",
+              "-drive", f"file={disk},format=qcow2,if=virtio",
               "-cdrom", iso,
               "-boot", "d",
               "-display", "none",
@@ -453,7 +456,7 @@ jobs:
           sent_cmds = False
           passed = False
           grub_wait = 3.0 if "-enable-kvm" in cmd else 6.0
-          timeout = 90 if "-enable-kvm" in cmd else 180
+          timeout = 180 if "-enable-kvm" in cmd else 360
 
           try:
               while time.time() - start < timeout:
@@ -497,6 +500,11 @@ jobs:
                               "cat /proc/version\n"
                               "kpm --version\n"
                               "ports --version\n"
+                              "command -v dialog iwctl setup-kryx\n"
+                              "ls -la /run/live/media/pool/packages.list\n"
+                              "mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
+                              "setup --offline --root /mnt --profile minimal -y\n"
+                              "setup-chroot /mnt /bin/sh -c 'echo ===CHROOT_OK=== && kpm --version && ls /boot/vmlinuz*'\n"
                               "echo ===KRYX_BOOT_DONE===\n"
                               "poweroff -f || halt -f\n"
                           )
@@ -514,15 +522,18 @@ jobs:
               try: proc.wait(timeout=3)
               except subprocess.TimeoutExpired: proc.kill()
               os.close(master_fd)
+              if os.path.exists(disk):
+                  os.unlink(disk)
 
           text = buf.decode("utf-8", errors="replace")
-          print(text[-3000:])
+          print(text[-4000:])
           if not passed:
               sys.exit(1)
-          if "KryX-x86_64" not in text or "6.18.63-kryx" not in text:
-              print("FAIL: expected KryX-x86_64 and 6.18.63-kryx in boot output")
-              sys.exit(1)
-          print("PASS: KryX live ISO booted cleanly on baseline qemu64!")
+          for marker in ("KryX-x86_64", "6.18.63-kryx", "===CHROOT_OK==="):
+              if marker not in text:
+                  print(f"FAIL: expected {marker!r} in boot/install output")
+                  sys.exit(1)
+          print("PASS: KryX live ISO booted, installed offline from /pool/, and entered setup-chroot cleanly on qemu64!")
           PY
 
       - name: Prepare release checksums

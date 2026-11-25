@@ -1,16 +1,16 @@
 ========================================================================
   Welcome to KryX Linux Live (x86_64)
 ========================================================================
-  Package manager : kpm   (config: /etc/kpm.ini, key: /etc/kpm/keys/kryx-release.pub)
-  Ports sync      : ports (built into kpm)
-  Handbook (CLI)  : curl -s https://kryx.anrix.org/install.txt | less
+  Guided TUI installer : setup-kryx   (Arch-like dialog wizard + GRUB)
+  CLI installer        : setup        (offline ISO pool or online kpm)
+  Wi-Fi (no Ethernet)  : iwctl        (iwd + linux-firmware preloaded)
+  Package manager      : kpm          (ports built in: `ports -u`)
+  Handbook (CLI)       : curl -s https://kryx.anrix.org/install.txt | less
 
-  Quick install steps:
-    1. Partition & mount target root at /mnt (and EFI at /mnt/boot/efi):
-         lsblk && cfdisk /dev/<disk>
-         mkfs.ext4 /dev/<root-part> && mount /dev/<root-part> /mnt
-    2. Install base KryX Linux via kpm:
-         setup
-    3. Chroot to configure /etc/fstab, GRUB, and root password:
+  Quick start (offline laptop install):
+    1. Run the interactive TUI installer (partitions, installs, GRUB):
+         setup-kryx
+    2. Or install manually after mounting /mnt (and /mnt/boot/efi):
+         setup --offline --root /mnt
          setup-chroot /mnt
 ========================================================================
