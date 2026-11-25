@@ -343,6 +343,8 @@ check_any_path "POSIX /bin/sh"            bin/sh usr/bin/sh
 check_any_path "bash"                     bin/bash usr/bin/bash
 check_any_path "login (shadow)"           bin/login usr/bin/login
 check_any_path "linux-pam (libpam.so.0)"  lib/libpam.so.0 usr/lib/libpam.so.0
+check_any_path "pam_unix.so"              lib/security/pam_unix.so usr/lib/security/pam_unix.so
+check_any_path "libnsl (libnsl.so.3)"     lib/libnsl.so.3 usr/lib/libnsl.so.3
 check_any_path "libbsd (libbsd.so.0)"     lib/libbsd.so.0 usr/lib/libbsd.so.0
 check_any_path "libmd (libmd.so.0)"       lib/libmd.so.0 usr/lib/libmd.so.0
 check_any_path "libgmp (libgmp.so.10)"    lib/libgmp.so.10 usr/lib/libgmp.so.10

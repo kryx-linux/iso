@@ -73,6 +73,9 @@ if command -v readelf >/dev/null 2>&1; then
         bin/sh \
         bin/bash \
         bin/login \
+        lib/security/pam_unix.so \
+        lib/security/pam_limits.so \
+        lib/security/pam_securetty.so \
         usr/bin/passwd \
         sbin/ip \
         sbin/dhcpcd \

@@ -19,11 +19,13 @@ libgmp
 libmpfr
 libmd
 libbsd
+libtirpc
+libnsl
 linux-pam
+dumb_runtime_dir
 expat
 db
 elfutils
-libtirpc
 sqlite3
 file
 libdevmapper
