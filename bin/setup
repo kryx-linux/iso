@@ -84,13 +84,13 @@ fi
 
 case "$PROFILE" in
     minimal)
-        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir ncurses readline dash bash coreutils eudev util-linux sysvinit grep sed gawk tar gzip kmod shadow kpm signify)
+        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir ncurses readline dash bash coreutils eudev util-linux sysvinit rc start-stop-daemon grep sed gawk findutils tar gzip kmod procps shadow inetutils kpm signify)
         ;;
     base)
-        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir expat db elfutils sqlite3 file libdevmapper ncurses readline dash bash coreutils eudev util-linux sysvinit grep sed gawk tar gzip kmod procps shadow less e2fsprogs dosfstools libmnl libnghttp2 openssl ca-certificates curl iproute2 dhcpcd libnl dbus wireless-tools wpa_supplicant iwd linux-firmware dialog libpng freetype efivar efibootmgr grub2 grub2-efi kernel kpm signify)
+        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir expat db elfutils sqlite3 file libdevmapper ncurses readline dash bash coreutils eudev util-linux sysvinit rc start-stop-daemon grep sed gawk findutils tar gzip kmod procps shadow sudo less vim e2fsprogs dosfstools libmnl libnghttp2 openssl ca-certificates curl inetutils iproute2 iputils dhcpcd libnl dbus wireless-tools wpa_supplicant iwd linux-firmware dialog libpng freetype efivar efibootmgr grub2 grub2-efi kernel kpm signify)
         ;;
     devel)
-        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir expat db elfutils sqlite3 file libdevmapper ncurses readline dash bash coreutils eudev util-linux sysvinit grep sed gawk tar gzip kmod procps shadow less e2fsprogs dosfstools libmnl libnghttp2 openssl ca-certificates curl iproute2 dhcpcd libnl dbus wireless-tools wpa_supplicant iwd linux-firmware dialog libpng freetype efivar efibootmgr grub2 grub2-efi kernel gcc binutils make pkgconf patch diffutils findutils git go kpm signify)
+        PKGS=(filesystem glibc zlib bzip2 xz zstd attr acl libcap libcap-ng libxcrypt libpcre2 libgmp libmpfr libmd libbsd libtirpc libnsl linux-pam dumb_runtime_dir expat db elfutils sqlite3 file libdevmapper ncurses readline dash bash coreutils eudev util-linux sysvinit rc start-stop-daemon grep sed gawk findutils tar gzip kmod procps shadow sudo less vim e2fsprogs dosfstools libmnl libnghttp2 openssl ca-certificates curl inetutils iproute2 iputils dhcpcd libnl dbus wireless-tools wpa_supplicant iwd linux-firmware dialog libpng freetype efivar efibootmgr grub2 grub2-efi kernel gcc binutils make pkgconf patch diffutils git go kpm signify)
         ;;
     *)
         echo "setup: error: invalid profile '${PROFILE}' (expected: minimal, base, or devel)" >&2
@@ -349,6 +349,21 @@ if [[ -f "${ROOT_PREFIX}/usr/share/zoneinfo/${TIMEZONE}" ]]; then
     ln -sf "/usr/share/zoneinfo/${TIMEZONE}" "${ROOT_PREFIX}/etc/localtime"
 fi
 
+# Configure CRUX /etc/rc.conf (hostname, timezone, and installed networking/Wi-Fi services).
+if [[ -f "${ROOT_PREFIX}/etc/rc.conf" ]]; then
+    RC_SERVICES=()
+    for svc in lo dbus iwd dhcpcd; do
+        if [[ -x "${ROOT_PREFIX}/etc/rc.d/${svc}" ]]; then
+            RC_SERVICES+=("$svc")
+        fi
+    done
+    sed -i \
+        -e "s|^HOSTNAME=.*|HOSTNAME=${HOSTNAME_VAL}|" \
+        -e "s|^TIMEZONE=.*|TIMEZONE=${TIMEZONE}|" \
+        -e "s|^SERVICES=.*|SERVICES=(${RC_SERVICES[*]})|" \
+        "${ROOT_PREFIX}/etc/rc.conf"
+fi
+
 # Generate UUID-based /etc/fstab from currently mounted target block devices when available.
 if [[ ! -f "${ROOT_PREFIX}/etc/fstab" ]] || grep -q 'Fill in your disk UUIDs' "${ROOT_PREFIX}/etc/fstab" 2>/dev/null; then
     ROOT_DEV="$(findmnt -n -o SOURCE "$TARGET_ROOT" 2>/dev/null || true)"
@@ -386,9 +401,9 @@ if [[ ! -f "${ROOT_PREFIX}/etc/fstab" ]] || grep -q 'Fill in your disk UUIDs' "$
     } > "${ROOT_PREFIX}/etc/fstab"
 fi
 
-# 9. Strict post-install verification so setup-chroot never fails with missing /bin/sh.
+# 9. Strict post-install verification so setup-chroot and first boot never fail.
 MISSING_TARGET=()
-for req_rel in bin/sh bin/bash sbin/init usr/bin/kpm; do
+for req_rel in bin/sh bin/bash sbin/init etc/inittab etc/rc usr/bin/kpm; do
     if [[ ! -e "${ROOT_PREFIX}/${req_rel}" ]]; then
         MISSING_TARGET+=("/${req_rel}")
     fi

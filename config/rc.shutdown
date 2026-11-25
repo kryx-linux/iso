@@ -25,7 +25,9 @@ for pidfile in /run/iwd.pid /run/dhcpcd.pid /run/dbus/pid; do
         kill "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null || true
     fi
 done
-killall -TERM iwd wpa_supplicant dhcpcd dbus-daemon 2>/dev/null || true
+for proc in iwd wpa_supplicant dhcpcd dbus-daemon; do
+    pkill -TERM -x "$proc" 2>/dev/null || true
+done
 [ -x /sbin/udevadm ] && /sbin/udevadm control --exit 2>/dev/null || true
 sleep 1
 

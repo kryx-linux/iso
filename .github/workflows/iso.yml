@@ -507,7 +507,7 @@ jobs:
                               "  iwctl device list >/dev/null 2>&1 && echo 'IWD''_OK' || (cat /var/log/iwd.log /var/log/dbus.log 2>/dev/null; false)\n"
                               "  mkfs.ext4 -F /dev/vda && mount /dev/vda /mnt\n"
                               "  setup --offline --root /mnt --profile minimal -y\n"
-                              "  setup-chroot /mnt /bin/sh -c 'kpm --version && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
+                              "  setup-chroot /mnt /bin/sh -c 'kpm --version && test -f /etc/inittab && test -x /etc/rc && ls /boot/vmlinuz* && echo \"CHROOT\"\"_OK\"'\n"
                               "  echo 'KRYX_BOOT''_DONE'\n"
                               ") && poweroff || echo 'KRYX_SMOKE''_FAILED'\n"
                           )
@@ -519,8 +519,8 @@ jobs:
                           break
 
                       if "KRYX_BOOT_DONE" in text:
-                          # Drain serial output while waiting up to 20s for /etc/rc.shutdown to cleanly power off QEMU!
-                          shut_end = time.time() + 20
+                          # Drain serial output while waiting up to 45s for /etc/rc.shutdown to cleanly power off QEMU!
+                          shut_end = time.time() + 45
                           while time.time() < shut_end and proc.poll() is None:
                               rr, _, _ = select.select([master_fd], [], [], 0.2)
                               if rr:

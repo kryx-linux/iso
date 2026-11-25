@@ -37,15 +37,20 @@ coreutils
 eudev
 util-linux
 sysvinit
+rc
+start-stop-daemon
 grep
 sed
 gawk
+findutils
 tar
 gzip
 kmod
 procps
 shadow
+sudo
 less
+vim
 
 # Disk & filesystem tools (core + opt)
 e2fsprogs
@@ -57,7 +62,9 @@ libnghttp2
 openssl
 ca-certificates
 curl
+inetutils
 iproute2
+iputils
 dhcpcd
 libnl
 dbus

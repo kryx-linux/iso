@@ -262,7 +262,7 @@ network={
 EOF
         fi
         chmod 0600 "$wpa_conf"
-        killall wpa_supplicant 2>/dev/null || true
+        pkill -TERM -x wpa_supplicant 2>/dev/null || true
         wpa_supplicant -B -i "$wlan" -c "$wpa_conf" || true
     else
         echo "[setup-kryx] Neither iwd nor wpa_supplicant available." >&2
@@ -458,12 +458,24 @@ SETUP_ARGS=(
 
 "$SETUP_BIN" "${SETUP_ARGS[@]}"
 
-# 8. Apply root password if provided
+# 8. Apply root password if provided (CRUX shadow omits chpasswd; hash via openssl SHA-512)
 if [[ -n "$ROOT_PASS" ]]; then
     echo "[setup-kryx] Setting root password in ${TARGET_ROOT}..."
-    printf 'root:%s\n' "$ROOT_PASS" | chroot "$TARGET_ROOT" /usr/sbin/chpasswd 2>/dev/null \
-        || printf '%s\n%s\n' "$ROOT_PASS" "$ROOT_PASS" | chroot "$TARGET_ROOT" /usr/bin/passwd root >/dev/null 2>&1 \
-        || echo "[setup-kryx] Warning: could not set root password automatically; run 'passwd' inside chroot." >&2
+    ROOT_HASH=""
+    if command -v openssl >/dev/null 2>&1; then
+        ROOT_HASH="$(printf '%s\n' "$ROOT_PASS" | openssl passwd -6 -stdin 2>/dev/null || true)"
+    fi
+    if [[ -n "$ROOT_HASH" && -f "${TARGET_ROOT}/etc/shadow" ]]; then
+        SHADOW_TMP="$(mktemp "${TMPDIR:-/tmp}/kryx-shadow.XXXXXX")"
+        ROOT_HASH="$ROOT_HASH" awk -F: -v OFS=: \
+            '$1 == "root" { $2 = ENVIRON["ROOT_HASH"]; $3 = 19999 } { print }' \
+            "${TARGET_ROOT}/etc/shadow" > "$SHADOW_TMP"
+        cat "$SHADOW_TMP" > "${TARGET_ROOT}/etc/shadow"
+        rm -f "$SHADOW_TMP"
+        chmod 0600 "${TARGET_ROOT}/etc/shadow"
+    else
+        echo "[setup-kryx] Warning: could not set root password automatically; run 'passwd' inside chroot." >&2
+    fi
 fi
 
 # 9. Automatically install GRUB if selected
@@ -471,6 +483,7 @@ if [[ "$INSTALL_GRUB" -eq 1 ]]; then
     echo "[setup-kryx] Installing GRUB bootloader inside ${TARGET_ROOT}..."
     if [[ "$IS_UEFI" -eq 1 ]]; then
         "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c '
+            grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=KryX || true
             grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=KryX --removable
             grub-mkconfig -o /boot/grub/grub.cfg
         ' || echo "[setup-kryx] Warning: UEFI GRUB install reported an issue; review inside setup-chroot." >&2
