@@ -64,7 +64,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 USE_DIALOG=0
-if [[ "$FORCE_PLAIN" -eq 0 ]] && command -v dialog >/dev/null 2>&1 && [[ -t 0 && -t 1 ]]; then
+if [[ "$FORCE_PLAIN" -eq 0 ]] && command -v dialog >/dev/null 2>&1 && [[ -r /dev/tty && -w /dev/tty ]]; then
     USE_DIALOG=1
 fi
 
@@ -79,11 +79,13 @@ IS_UEFI=0
 ui_msg() {
     local title="$1" msg="$2"
     if [[ "$USE_DIALOG" -eq 1 ]]; then
-        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --msgbox "$msg" 13 70
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --msgbox "$msg" 13 70 </dev/tty >/dev/tty
     else
-        echo ""
-        echo "=== $title ==="
-        printf '%b\n' "$msg"
+        {
+            echo ""
+            echo "=== $title ==="
+            printf '%b\n' "$msg"
+        } >/dev/tty
     fi
 }
 
@@ -92,15 +94,18 @@ ui_yesno() {
     if [[ "$USE_DIALOG" -eq 1 ]]; then
         local extra=()
         [[ "$default_no" -eq 1 ]] && extra=(--defaultno)
-        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" "${extra[@]}" --yesno "$msg" 14 70
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" "${extra[@]}" --yesno "$msg" 14 70 </dev/tty >/dev/tty
         return $?
     else
-        echo ""
-        echo "=== $title ==="
-        printf '%b\n' "$msg"
+        {
+            echo ""
+            echo "=== $title ==="
+            printf '%b\n' "$msg"
+        } >/dev/tty
         local prompt="[Y/n]"
         [[ "$default_no" -eq 1 ]] && prompt="[y/N]"
-        read -r -p "Continue? ${prompt} " ans
+        local ans=""
+        read -r -p "Continue? ${prompt} " ans </dev/tty
         if [[ -z "$ans" ]]; then
             [[ "$default_no" -eq 0 ]] && return 0 || return 1
         fi
@@ -114,14 +119,16 @@ ui_yesno() {
 ui_input() {
     local title="$1" msg="$2" def="$3"
     if [[ "$USE_DIALOG" -eq 1 ]]; then
-        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --inputbox "$msg" 11 70 "$def" 2>"$TMP_OUT" || return 1
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --inputbox "$msg" 11 70 "$def" </dev/tty >/dev/tty 2>"$TMP_OUT" || return 1
         cat "$TMP_OUT"
     else
-        echo ""
-        echo "=== $title ==="
-        printf '%b\n' "$msg"
+        {
+            echo ""
+            echo "=== $title ==="
+            printf '%b\n' "$msg"
+        } >/dev/tty
         local val=""
-        read -r -p "[${def}]: " val
+        read -r -p "[${def}]: " val </dev/tty
         echo "${val:-$def}"
     fi
 }
@@ -129,15 +136,17 @@ ui_input() {
 ui_password() {
     local title="$1" msg="$2"
     if [[ "$USE_DIALOG" -eq 1 ]]; then
-        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --insecure --passwordbox "$msg" 10 70 2>"$TMP_OUT" || return 1
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --insecure --passwordbox "$msg" 10 70 </dev/tty >/dev/tty 2>"$TMP_OUT" || return 1
         cat "$TMP_OUT"
     else
-        echo ""
-        echo "=== $title ==="
-        printf '%b\n' "$msg"
+        {
+            echo ""
+            echo "=== $title ==="
+            printf '%b\n' "$msg"
+        } >/dev/tty
         local val=""
-        read -rs -p "Password: " val
-        echo "" >&2
+        read -rs -p "Password: " val </dev/tty
+        echo "" >/dev/tty
         echo "$val"
     fi
 }
@@ -146,22 +155,24 @@ ui_menu() {
     local title="$1" msg="$2"
     shift 2
     if [[ "$USE_DIALOG" -eq 1 ]]; then
-        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --menu "$msg" 16 72 7 "$@" 2>"$TMP_OUT" || return 1
+        dialog --backtitle "KryX Linux (${VERSION}) Installer" --no-shadow --title "$title" --menu "$msg" 16 72 7 "$@" </dev/tty >/dev/tty 2>"$TMP_OUT" || return 1
         cat "$TMP_OUT"
     else
-        echo ""
-        echo "=== $title ==="
-        printf '%b\n' "$msg"
+        {
+            echo ""
+            echo "=== $title ==="
+            printf '%b\n' "$msg"
+        } >/dev/tty
         local keys=()
         local idx=1
         while [[ $# -ge 2 ]]; do
             keys+=("$1")
-            printf '  %d) %-14s - %s\n' "$idx" "$1" "$2"
+            printf '  %d) %-14s - %s\n' "$idx" "$1" "$2" >/dev/tty
             shift 2
             idx=$((idx + 1))
         done
         local choice=""
-        read -r -p "Select [1]: " choice
+        read -r -p "Select [1]: " choice </dev/tty
         choice="${choice:-1}"
         if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#keys[@]} )); then
             echo "${keys[$((choice - 1))]}"
