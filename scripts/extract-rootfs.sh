@@ -7,6 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 DEFAULT_ISO_URL="https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso"
+FALLBACK_ISO_URLS=(
+    "https://www.mirrorservice.org/sites/crux.nu/crux-3.8/iso/crux-3.8.iso"
+    "https://ftp.spline.inf.fu-berlin.de/pub/linux/crux/crux-3.8/iso/crux-3.8.iso"
+    "https://crux.mirror.garr.it/crux-3.8/iso/crux-3.8.iso"
+)
 
 ISO_PATH=""
 ISO_URL="$DEFAULT_ISO_URL"
@@ -161,30 +166,55 @@ verify_sha256() {
 }
 
 download_iso() {
-    local url="$1"
+    local primary_url="$1"
     local dest_dir="${WORK_DIR_ABS}/iso"
     mkdir -p "$dest_dir"
-    local filename
-    filename="$(basename "${url%%\?*}")"
-    local dest="${dest_dir}/${filename}"
 
-    if [[ -f "$dest" ]]; then
-        echo "[extract-rootfs] Reusing cached ISO: ${dest}"
-    else
-        echo "[extract-rootfs] Downloading CRUX ISO from ${url}..."
+    local urls=("$primary_url")
+    if [[ -z "$ISO_SHA256" && "$primary_url" == "$DEFAULT_ISO_URL" ]]; then
+        urls+=("${FALLBACK_ISO_URLS[@]}")
+    fi
+
+    local chosen_dest=""
+    local u filename dest
+    for u in "${urls[@]}"; do
+        filename="$(basename "${u%%\?*}")"
+        dest="${dest_dir}/${filename}"
+        if [[ -f "$dest" ]]; then
+            echo "[extract-rootfs] Reusing cached ISO: ${dest}"
+            chosen_dest="$dest"
+            break
+        fi
+
+        echo "[extract-rootfs] Downloading CRUX ISO from ${u}..."
+        rm -f "${dest}.part"
         if command -v curl >/dev/null 2>&1; then
-            curl -fL --retry 3 --retry-delay 5 -o "${dest}.part" "$url"
+            if curl -fL --connect-timeout 20 --retry 2 --retry-delay 5 -o "${dest}.part" "$u"; then
+                mv -f "${dest}.part" "$dest"
+                chosen_dest="$dest"
+                break
+            fi
         elif command -v wget >/dev/null 2>&1; then
-            wget --tries=3 -O "${dest}.part" "$url"
+            if wget --timeout=20 --tries=2 -O "${dest}.part" "$u"; then
+                mv -f "${dest}.part" "$dest"
+                chosen_dest="$dest"
+                break
+            fi
         else
             echo "extract-rootfs.sh: error: neither curl nor wget is available" >&2
             exit 1
         fi
-        mv -f "${dest}.part" "$dest"
+        rm -f "${dest}.part"
+        echo "[extract-rootfs] Warning: download failed from ${u}, trying next mirror..." >&2
+    done
+
+    if [[ -z "$chosen_dest" ]]; then
+        echo "extract-rootfs.sh: error: failed to download CRUX ISO from all mirrors" >&2
+        exit 1
     fi
 
-    verify_sha256 "$dest" "$ISO_SHA256"
-    ISO_PATH="$dest"
+    verify_sha256 "$chosen_dest" "$ISO_SHA256"
+    ISO_PATH="$chosen_dest"
 }
 
 extract_iso_contents() {
