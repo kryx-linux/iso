@@ -180,26 +180,42 @@ done
 echo "[build-essential-pkgs] Summary: ${REUSED_SEED} seeded/cached, ${AVAIL_REMOTE} in remote index, ${#TO_BUILD[@]} to build from ports."
 
 FAILED=()
+FAIL_LOGS=()
+mkdir -p "${WORK_ABS}/logs"
 for pkg in "${TO_BUILD[@]}"; do
     echo "[build-essential-pkgs] Building missing essential package '${pkg}' from ${PORTS_DIR}..."
     BUILD_ARGS=(--deps --force)
     [[ "$IGNORE_FOOTPRINT" -eq 1 ]] && BUILD_ARGS+=(--ignore-footprint)
     [[ "$IGNORE_MD5SUM" -eq 1 ]] && BUILD_ARGS+=(--ignore-md5sum)
+    PKG_LOG="${WORK_ABS}/logs/${pkg}.log"
 
-    if "$KPM_BIN" --config "$KPM_CONF" build "${BUILD_ARGS[@]}" "$pkg"; then
+    set +e
+    "$KPM_BIN" --config "$KPM_CONF" build "${BUILD_ARGS[@]}" "$pkg" 2>&1 | tee "$PKG_LOG"
+    rc="${PIPESTATUS[0]}"
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
         if archive="$(find_pkg_archive "$OUT_ABS" "$pkg")"; then
             echo "  [built]  $(basename "$archive")"
         else
             echo "  [ERROR]  kpm build succeeded for '${pkg}', but no archive found in ${OUT_ABS}" >&2
             FAILED+=("$pkg")
+            FAIL_LOGS+=("${pkg}:${PKG_LOG}")
         fi
     else
         echo "  [ERROR]  failed to build essential package '${pkg}'" >&2
         FAILED+=("$pkg")
+        FAIL_LOGS+=("${pkg}:${PKG_LOG}")
     fi
 done
 
 if [[ "${#FAILED[@]}" -gt 0 ]]; then
+    echo "=== Failure Summary ===" >&2
+    for entry in "${FAIL_LOGS[@]}"; do
+        fpkg="${entry%%:*}"
+        flog="${entry#*:}"
+        echo "--- ${fpkg} (last 15 lines) ---" >&2
+        tail -n 15 "$flog" >&2 || true
+    done
     echo "build-essential-pkgs.sh: ERROR: failed to resolve/build essential package(s): ${FAILED[*]}" >&2
     exit 1
 fi
