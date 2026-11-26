@@ -73,12 +73,17 @@ if [[ -z "$SRC_TAR" || ! -f "$SRC_TAR" ]]; then
     SRC_TAR="${SRC_ROOT}/${TARBALL_NAME}"
     if [[ ! -f "$SRC_TAR" ]]; then
         DL_URL="${BUSYBOX_MIRROR%/}/${TARBALL_NAME}"
+        DL_FALLBACK="https://sources.buildroot.net/busybox/${TARBALL_NAME}"
         echo "[mkbusybox] Downloading ${DL_URL}..."
         command -v curl >/dev/null 2>&1 || {
             echo "mkbusybox.sh: error: 'curl' is required to download BusyBox source" >&2
             exit 1
         }
-        curl -fL --retry 3 -o "${SRC_TAR}.part" "$DL_URL"
+        if ! curl -fL --connect-timeout 20 --retry 3 --retry-delay 5 -o "${SRC_TAR}.part" "$DL_URL"; then
+            echo "[mkbusybox] Primary download failed, trying ${DL_FALLBACK}..." >&2
+            rm -f "${SRC_TAR}.part"
+            curl -fL --connect-timeout 20 --retry 3 --retry-delay 5 -o "${SRC_TAR}.part" "$DL_FALLBACK"
+        fi
         mv -f "${SRC_TAR}.part" "$SRC_TAR"
     fi
 fi

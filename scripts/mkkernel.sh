@@ -162,12 +162,17 @@ fi
 if [[ -z "$SRC_TAR" || ! -f "$SRC_TAR" ]]; then
     SRC_TAR="${SRC_ROOT}/${TARBALL_NAME}"
     DL_URL="${KERNEL_MIRROR%/}/pub/linux/kernel/v${MAJOR_VER}.x/${TARBALL_NAME}"
+    DL_FALLBACK="https://mirrors.edge.kernel.org/pub/linux/kernel/v${MAJOR_VER}.x/${TARBALL_NAME}"
     echo "[mkkernel] Downloading ${DL_URL}..."
     command -v curl >/dev/null 2>&1 || {
         echo "mkkernel.sh: error: 'curl' is required to download kernel source" >&2
         exit 1
     }
-    curl -fL --retry 3 -o "${SRC_TAR}.part" "$DL_URL"
+    if ! curl -fL --connect-timeout 20 --retry 3 --retry-delay 5 -o "${SRC_TAR}.part" "$DL_URL"; then
+        echo "[mkkernel] Primary download failed, trying ${DL_FALLBACK}..." >&2
+        rm -f "${SRC_TAR}.part"
+        curl -fL --connect-timeout 20 --retry 3 --retry-delay 5 -o "${SRC_TAR}.part" "$DL_FALLBACK"
+    fi
     mv -f "${SRC_TAR}.part" "$SRC_TAR"
 else
     echo "[mkkernel] Using local kernel tarball: ${SRC_TAR}"

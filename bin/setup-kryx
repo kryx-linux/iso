@@ -500,11 +500,18 @@ fi
 if [[ "$INSTALL_GRUB" -eq 1 ]]; then
     echo "[setup-kryx] Installing GRUB bootloader inside ${TARGET_ROOT}..."
     if [[ "$IS_UEFI" -eq 1 ]]; then
-        "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c '
-            grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=KryX || true
-            grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=KryX --removable
+        EFI_REL="/boot/efi"
+        for cand_efi in "${TARGET_ROOT%/}/boot/efi" "${TARGET_ROOT%/}/efi"; do
+            if mountpoint -q "$cand_efi" 2>/dev/null; then
+                EFI_REL="${cand_efi#"${TARGET_ROOT%/}"}"
+                break
+            fi
+        done
+        "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c "
+            grub-install --target=x86_64-efi --efi-directory='${EFI_REL}' --bootloader-id=KryX || true
+            grub-install --target=x86_64-efi --efi-directory='${EFI_REL}' --bootloader-id=KryX --removable
             grub-mkconfig -o /boot/grub/grub.cfg
-        ' || echo "[setup-kryx] Warning: UEFI GRUB install reported an issue; review inside setup-chroot." >&2
+        " || echo "[setup-kryx] Warning: UEFI GRUB install reported an issue; review inside setup-chroot." >&2
     elif [[ -n "$BOOT_DISK" ]]; then
         "$SETUP_CHROOT_BIN" "$TARGET_ROOT" /bin/sh -c "
             grub-install --target=i386-pc '${BOOT_DISK}'
