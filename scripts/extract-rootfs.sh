@@ -8,9 +8,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 DEFAULT_ISO_URL="https://git.crux.nu/system/iso/releases/download/3.8-updated/crux-3.8-updated.iso"
 FALLBACK_ISO_URLS=(
-    "https://www.mirrorservice.org/sites/crux.nu/crux-3.8/iso/crux-3.8.iso"
-    "https://ftp.spline.inf.fu-berlin.de/pub/linux/crux/crux-3.8/iso/crux-3.8.iso"
+    "https://mirror.freedif.org/crux/crux-3.8/iso/crux-3.8.iso"
     "https://crux.mirror.garr.it/crux-3.8/iso/crux-3.8.iso"
+    "https://ftp.spline.inf.fu-berlin.de/pub/crux/crux-3.8/iso/crux-3.8.iso"
 )
 
 ISO_PATH=""
