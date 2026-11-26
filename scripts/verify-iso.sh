@@ -88,6 +88,8 @@ if command -v readelf >/dev/null 2>&1; then
         usr/bin/iwctl \
         usr/sbin/iwd \
         usr/sbin/dbus-daemon \
+        usr/sbin/efibootmgr \
+        usr/bin/efibootdump \
         usr/sbin/grub-install \
         usr/bin/grub-mkrescue; do
         bin_path="${TMP_DIR}/sfs/${rel_bin}"

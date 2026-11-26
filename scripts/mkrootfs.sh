@@ -283,6 +283,8 @@ install -m 0755 "${REPO_ROOT}/bin/setup-kryx"   "${ROOTFS_DIR}/usr/bin/setup-kry
 install -m 0755 "${REPO_ROOT}/bin/setup-chroot" "${ROOTFS_DIR}/usr/bin/setup-chroot"
 
 # 5. Install minimal live system configs (/etc/inittab, /etc/rc, /etc/issue, /etc/motd, etc.).
+# Remove core/rc's multi-call symlinks (rc.shutdown/rc.single/rc.multi -> rc) before installing live scripts.
+rm -f "${ROOTFS_DIR}/etc/rc" "${ROOTFS_DIR}/etc/rc.shutdown" "${ROOTFS_DIR}/etc/rc.single" "${ROOTFS_DIR}/etc/rc.multi"
 install -m 0644 "${REPO_ROOT}/config/inittab"      "${ROOTFS_DIR}/etc/inittab"
 install -m 0755 "${REPO_ROOT}/config/serial-getty" "${ROOTFS_DIR}/sbin/serial-getty"
 install -m 0755 "${REPO_ROOT}/config/rc"           "${ROOTFS_DIR}/etc/rc"
@@ -357,7 +359,9 @@ check_any_path "libnsl (libnsl.so.3)"     lib/libnsl.so.3 usr/lib/libnsl.so.3
 check_any_path "libbsd (libbsd.so.0)"     lib/libbsd.so.0 usr/lib/libbsd.so.0
 check_any_path "libmd (libmd.so.0)"       lib/libmd.so.0 usr/lib/libmd.so.0
 check_any_path "libgmp (libgmp.so.10)"    lib/libgmp.so.10 usr/lib/libgmp.so.10
+check_any_path "libpopt (libpopt.so.0)"   lib/libpopt.so.0 usr/lib/libpopt.so.0
 check_any_path "libdevmapper"             lib/libdevmapper.so.1.02 usr/lib/libdevmapper.so.1.02
+check_any_path "efibootmgr"               usr/sbin/efibootmgr sbin/efibootmgr
 check_any_path "sysvinit (/sbin/init)"    sbin/init usr/sbin/init
 check_any_path "agetty"                   sbin/agetty usr/sbin/agetty
 check_any_path "mount (util-linux)"       bin/mount usr/bin/mount

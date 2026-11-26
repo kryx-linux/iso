@@ -20,7 +20,7 @@ fi
 echo "KryX Linux Live — shutting down (${ACTION})..."
 
 # Gracefully stop live daemons so Wi-Fi/D-Bus/udev release hardware cleanly
-for pidfile in /run/iwd.pid /run/dhcpcd.pid /run/dbus/pid; do
+for pidfile in /run/iwd.pid /run/dhcpcd/pid /run/dhcpcd.pid /run/dbus/pid; do
     if [ -r "$pidfile" ]; then
         kill "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null || true
     fi

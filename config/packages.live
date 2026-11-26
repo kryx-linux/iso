@@ -76,7 +76,11 @@ linux-firmware
 # Interactive TUI installer dependency (opt)
 dialog
 
-# Bootloader tools for target install (opt)
+# Bootloader tools & runtime libraries for target install (opt)
+popt
+json-c
+keyutils
+libnvme
 libpng
 freetype
 efivar

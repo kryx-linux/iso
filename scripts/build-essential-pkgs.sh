@@ -32,7 +32,7 @@ into --out-dir as a .pkg.tar.* archive before ISO rootfs assembly.
 
 Options:
   --pkg-list <file>     Package list file (default: config/packages.live)
-  --ports-dir <dir>     Ports tree containing core/, opt/, contrib/, rolling/ (default: /usr/ports)
+  --ports-dir <dir>     Ports tree containing kpm-tools/, kernel/, system/, core/, opt/, contrib/ (default: /usr/ports)
   --seed-pkgs <dir>     Optional directory of prebuilt .pkg.tar.* packages to reuse
   --out-dir <dir>       Output directory for collected/built .pkg.tar.* archives (default: build/local-pkgs)
   --work-dir <dir>      Temporary kpm build work directory (default: build/pkg-work)

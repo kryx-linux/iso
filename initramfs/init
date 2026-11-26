@@ -60,6 +60,7 @@ if [ -d /lib/modules ]; then
         cdrom scsi_common scsi_mod sr_mod sd_mod \
         libata libahci ahci ata_piix ata_generic \
         nvme nvme_core vmd \
+        mmc_core mmc_block sdhci sdhci_pci \
         virtio virtio_pci virtio_ring virtio_blk virtio_scsi \
         hv_vmbus hv_storvsc vmw_pvscsi \
         xhci_hcd xhci_pci ehci_hcd ehci_pci ohci_hcd uhci_hcd \

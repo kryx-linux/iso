@@ -3,7 +3,6 @@
 id:2:initdefault:
 
 rc::sysinit:/etc/rc
-rs:S1:wait:/etc/rc.single
 l0:0:wait:/etc/rc.shutdown halt
 l6:6:wait:/etc/rc.shutdown reboot
 su:S:wait:/sbin/sulogin -p

@@ -140,6 +140,7 @@ if [[ -n "$KVER" && -d "${ROOTFS_DIR}/lib/modules/${KVER}" ]]; then
         kernel/drivers/leds \
         kernel/drivers/md \
         kernel/drivers/message \
+        kernel/drivers/mmc \
         kernel/drivers/nvme \
         kernel/drivers/pci/controller \
         kernel/drivers/scsi \
